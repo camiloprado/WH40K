@@ -380,11 +380,9 @@ export function GameScreen() {
   function overrideKeys(card: Card): { key: string }[] {
     const keys: string[] = [];
     if (!mine) {
-      if (phase === "shooting") keys.push("overwatch");
+      // Fire Overwatch: fim da Movement do oponente (Core 15.08), não no Shooting (C11).
+      if (phase === "movement") keys.push("overwatch", "rapid_ingress", "reactive_move");
       if (phase === "charge") keys.push("heroic_intervention");
-      if (phase === "movement") {
-        keys.push("rapid_ingress", "reactive_move");
-      }
     }
     if (phase === "shooting") {
       if (card.live.moved === "advanced") keys.push("shoot_after_advance");
@@ -474,10 +472,16 @@ export function GameScreen() {
     for (let step = from; step < to; step += 1) await push("phase_advanced", {});
   }
 
+  const pendingIds = new Set(pendingUnits.map((item) => item.unit.id));
   const byPlace = (place: Place) =>
     cards
       .filter((item) => item.place === place)
-      .sort((a, b) => a.order - b.order);
+      .sort((a, b) => {
+        const ap = pendingIds.has(a.unit.id) ? 0 : 1;
+        const bp = pendingIds.has(b.unit.id) ? 0 : 1;
+        if (ap !== bp) return ap - bp;
+        return a.order - b.order;
+      });
   const byZone = (zone: Zone) => cards.filter((item) => item.zone === zone);
 
   const renderLane = (lane: Lane) => (
@@ -487,6 +491,7 @@ export function GameScreen() {
           key={card.unit.id}
           card={card}
           phase={phase}
+          mine={mine}
           selected={selected === card.unit.id}
           choiceFor={choiceFor}
           leads={leaderOf.has(card.unit.id) ? names.get(leaderOf.get(card.unit.id)!) : undefined}
@@ -518,6 +523,14 @@ export function GameScreen() {
         pendingCount={pendingUnits.length}
         onPick={jumpTo}
         onNext={advance}
+        onPending={() => {
+          const first = pendingUnits[0];
+          if (!first) return;
+          setSelected(first.unit.id);
+          requestAnimationFrame(() => {
+            document.querySelector(`[data-unit="${first.unit.id}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+          });
+        }}
       />
       {advanceConfirm && (
         <div className="sheet-confirm" role="dialog" aria-modal>
@@ -713,6 +726,7 @@ function PhaseRail({
   pendingCount,
   onPick,
   onNext,
+  onPending,
 }: {
   phase: string;
   phases?: string[];
@@ -720,6 +734,7 @@ function PhaseRail({
   pendingCount: number;
   onPick: (phase: string) => void;
   onNext: () => void;
+  onPending?: () => void;
 }) {
   const current = phases.indexOf(phase);
   const short = {
@@ -730,7 +745,7 @@ function PhaseRail({
     shooting: "SHT",
     charge: "CHG",
     fight: "FGT",
-    end_of_turn: "FIM",
+    end_of_turn: "END",
     end_of_round: "Rd",
   } as Record<string, string>;
   return (
@@ -738,30 +753,25 @@ function PhaseRail({
       <div className="turn-tag">{mine ? "Seu turno" : "Turno do oponente"}</div>
       <div className="phase-current mono">{short[phase] || phase}</div>
       {pendingCount > 0 && mine && (
-        <button
-          className="ghost pending-chip"
-          type="button"
-          onClick={() => {
-            const el = document.querySelector(".unit-card.pending");
-            el?.scrollIntoView({ behavior: "smooth", block: "center" });
-          }}
-        >
+        <button className="ghost pending-chip" type="button" onClick={() => onPending?.()}>
           Faltam {pendingCount} · {short[phase] || phase}
         </button>
       )}
       <details className="phase-menu">
         <summary>Fases</summary>
-        {phases.map((id, index) => (
-          <button
-            key={id}
-            className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
-            style={{ ["--c" as string]: `var(--${id})` }}
-            disabled={index < current}
-            onClick={() => onPick(id)}
-          >
-            {PHASE_NAMES[id]}
-          </button>
-        ))}
+        <div className="phase-menu-list">
+          {phases.map((id, index) => (
+            <button
+              key={id}
+              className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
+              style={{ ["--c" as string]: `var(--${id})` }}
+              disabled={index < current}
+              onClick={() => onPick(id)}
+            >
+              {PHASE_NAMES[id]}
+            </button>
+          ))}
+        </div>
       </details>
       <button className="primary next" onClick={onNext} title="Atalho: N">
         Próxima fase
@@ -862,6 +872,7 @@ function ZoneArea({
 function UnitCard({
   card,
   phase,
+  mine = true,
   selected,
   compact,
   leads,
@@ -873,6 +884,7 @@ function UnitCard({
 }: {
   card: Card;
   phase: string;
+  mine?: boolean;
   selected: boolean;
   compact?: boolean;
   choiceFor: ChoiceLookup;
@@ -887,7 +899,8 @@ function UnitCard({
   const state = card.zone === "destroyed" ? "destroyed" : result.status;
   const onTable = card.zone === "table";
   const actionPhase = ["movement", "shooting", "charge", "fight"].includes(phase);
-  const pending = onTable && actionPhase && (result.status === "active" || result.status === "warn");
+  // Só o turno do Camilo destaca pendentes (F1); Fight do oponente não brilha.
+  const pending = Boolean(mine) && onTable && actionPhase && (result.status === "active" || result.status === "warn");
   const pendingChoices = onTable ? card.effects.filter((effect) => effect.choice_options.length && !choiceFor(effect, unit.id)) : [];
   return (
     <div className={`card-cell ${compact ? "compact" : ""}`}>

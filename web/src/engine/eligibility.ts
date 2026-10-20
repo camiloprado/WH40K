@@ -116,7 +116,11 @@ export function evaluateUnit(input: {
   }
   const var_strActive = input.activePlayer ?? "me";
   const var_setReactive = new Set(["overwatch", "heroic_intervention", "rapid_ingress", "reactive_move"]);
-  const var_boolReactive = [...var_setReactive].some((key) => var_fnPermitted(key));
+  // Overwatch só na Movement do oponente (Core 15.08 / C11); no Shooting fica inactive.
+  const var_boolReactive = [...var_setReactive].some((key) => {
+    if (key === "overwatch" && input.phase !== "movement") return false;
+    return var_fnPermitted(key);
+  });
   if (
     var_strActive === "opponent" &&
     (input.phase === "movement" || input.phase === "shooting" || input.phase === "charge") &&

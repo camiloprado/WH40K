@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { canStartAction, evaluateMany, evaluateUnit, type UnitSnapshot } from "./eligibility";
+import { canStartAction, evaluateMany, evaluateUnit, guideMatch, type UnitSnapshot } from "./eligibility";
 
 const base = (patch: Partial<UnitSnapshot> = {}): UnitSnapshot => ({
   moved: "none",
@@ -178,7 +178,7 @@ describe("elegibilidade", () => {
     expect(opp.status).toBe("active");
   });
 
-  it("C11 turno do oponente inativa MOV/SHT/CHG salvo overwatch", () => {
+  it("C11 turno do oponente inativa MOV/SHT/CHG salvo overwatch na Movement", () => {
     for (const phase of ["movement", "shooting", "charge"] as const) {
       const blocked = evaluateUnit({
         phase,
@@ -189,13 +189,20 @@ describe("elegibilidade", () => {
       expect(blocked.status).toBe("inactive");
       expect(blocked.reasons).toContain("Turno do oponente");
     }
-    const overwatch = evaluateUnit({
+    const overwatchMove = evaluateUnit({
+      phase: "movement",
+      unit: base({ overrides: [{ key: "overwatch" }] }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      activePlayer: "opponent",
+    });
+    expect(overwatchMove.status).not.toBe("inactive");
+    const overwatchShoot = evaluateUnit({
       phase: "shooting",
       unit: base({ overrides: [{ key: "overwatch" }] }),
       weapons: [{ name: "Rifle", kind: "ranged" }],
       activePlayer: "opponent",
     });
-    expect(overwatch.status).not.toBe("inactive");
+    expect(overwatchShoot.status).toBe("inactive");
     expect(
       evaluateUnit({
         phase: "fight",
@@ -259,6 +266,19 @@ describe("elegibilidade", () => {
       ],
     });
     expect(choice.reasons).toContain("Escolha: CLOSE-QUARTERS ou as outras armas");
+  });
+
+  it("R1 guideMatch: nml sem mapa completo fica condicional", () => {
+    const own = guideMatch(
+      { "game.shadow_of_chaos": "own_dz" },
+      { shadow_areas: ["own_dz"], shadow_areas_complete: false },
+    );
+    expect(own).toEqual({ include: true, conditional: false });
+    const nml = guideMatch(
+      { "game.shadow_of_chaos": "nml" },
+      { shadow_areas: ["own_dz"], shadow_areas_complete: false },
+    );
+    expect(nml).toEqual({ include: true, conditional: true });
   });
 
   it("trinta unidades ficam abaixo de 20 ms", () => {
