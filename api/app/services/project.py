@@ -87,6 +87,7 @@ def _empty() -> dict:
         "battle_shock": [],
         "choices": [],
         "warnings": [],
+        "event_rules": False,
         "started": False,
     }
 
@@ -162,6 +163,7 @@ def _apply(state: dict, event: dict) -> None:
         state["cp"]["me"] = int(payload.get("cp_me") or 0)
         state["cp"]["opponent"] = int(payload.get("cp_opponent") or 0)
         state["attachments"] = payload.get("attachments") or []
+        state["event_rules"] = bool(payload.get("event_rules"))
         for unit in payload.get("units") or []:
             state["live"][int(unit["list_unit_id"])] = _blank(
                 unit["list_unit_id"], unit.get("name") or "", 1, None
@@ -170,6 +172,10 @@ def _apply(state: dict, event: dict) -> None:
         return
     if not state["started"]:
         state["warnings"].append("missing_game_started")
+        return
+    if kind == "game_settings_set":
+        if "event_rules" in payload:
+            state["event_rules"] = bool(payload.get("event_rules"))
         return
     if kind == "phase_advanced":
         index = PHASES.index(state["phase"])
@@ -181,9 +187,10 @@ def _apply(state: dict, event: dict) -> None:
             if state["player"] != state["first_player"]:
                 state["round"] = min(10, state["round"] + 1)
                 state["player"] = state["first_player"]
+                state["phase"] = "round_start"
             else:
                 state["player"] = other
-            state["phase"] = "round_start"
+                state["phase"] = "command"
             entered_my_command = state["player"] == "me"
         if entered_my_command:
             _roll(state)
@@ -222,7 +229,7 @@ def _apply(state: dict, event: dict) -> None:
             )
             if var_boolTwice:
                 state["warnings"].append("core_cp_twice")
-        if var_intDelta > 0 and var_strReason != "core_cp" and payload.get("event_rules"):
+        if var_intDelta > 0 and var_strReason != "core_cp" and (state.get("event_rules") or payload.get("event_rules")):
             var_intExtras = sum(
                 1
                 for item in state["ledger"]
@@ -431,10 +438,29 @@ def _stratagem(state: dict, event: dict) -> None:
     payload = event["payload"]
     name = payload.get("stratagem_name") or "Stratagem"
     player = payload.get("player") or state["player"]
-    limit = payload.get("use_limit") or "none"
-    if limit != "none" and _limit_hit(state, name, player, limit) and not payload.get("limit_overridden"):
+    limit = payload.get("use_limit") or "per_phase"
+    if _limit_hit(state, name, player, "per_phase") and not payload.get("limit_overridden"):
         state["warnings"].append("stratagem_limit")
         return
+    if limit not in ("none", "per_phase") and _limit_hit(state, name, player, limit) and not payload.get(
+        "limit_overridden"
+    ):
+        state["warnings"].append("stratagem_limit")
+        return
+    target_id = payload.get("target_list_unit_id")
+    if target_id is not None:
+        target_id = int(target_id)
+        if any(
+            item.get("target_list_unit_id") == target_id
+            and item["player"] == player
+            and item["phase"] == state["phase"]
+            and item["round"] == state["round"]
+            for item in state["stratagem_uses"]
+        ):
+            state["warnings"].append("stratagem_same_target")
+        unit = state["live"].get(target_id)
+        if unit and unit.get("battle_shocked"):
+            state["warnings"].append("stratagem_target_shocked")
     use_id = str(uuid.uuid5(uuid.UUID(event["id"]), "stratagem"))
     spent = int(payload.get("cp_spent") or 0)
     if spent and not _change_cp(
@@ -456,7 +482,7 @@ def _stratagem(state: dict, event: dict) -> None:
             "player": player,
             "phase": state["phase"],
             "cp_spent": spent if state["cp"][player] is not None else 0,
-            "target_list_unit_id": payload.get("target_list_unit_id"),
+            "target_list_unit_id": target_id,
             "limit_overridden": bool(payload.get("limit_overridden")),
             "created_at": event["created_at"],
         }

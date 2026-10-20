@@ -59,6 +59,49 @@ it("mantém battle-shock até passar no teste", () => {
   expect(undone.live[1].battle_shocked).toBe(true);
 });
 
+it("Gain Core CP e event_rules por partida", () => {
+  const start = ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }], event_rules: true }, "2026-10-15T12:00:00Z");
+  const meCmd = applyEvents([
+    start,
+    ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+    ev(3, "cp_changed", { delta: 1, reason: "core_cp", player: "me" }, "2026-10-15T12:00:02Z"),
+    ev(4, "cp_changed", { delta: 1, reason: "core_cp", player: "opponent" }, "2026-10-15T12:00:03Z"),
+  ]);
+  expect(meCmd.cp).toEqual({ me: 1, opponent: 1 });
+  expect(meCmd.eventRules).toBe(true);
+  const twice = applyEvents([
+    start,
+    ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+    ev(3, "cp_changed", { delta: 1, reason: "core_cp", player: "me" }, "2026-10-15T12:00:02Z"),
+    ev(4, "cp_changed", { delta: 1, reason: "core_cp", player: "opponent" }, "2026-10-15T12:00:03Z"),
+    ev(5, "cp_changed", { delta: 1, reason: "core_cp", player: "me" }, "2026-10-15T12:00:04Z"),
+  ]);
+  expect(twice.warnings).toContain("core_cp_twice");
+  const extras = applyEvents([
+    start,
+    ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+    ev(3, "cp_changed", { delta: 1, reason: "manual", player: "me" }, "2026-10-15T12:00:02Z"),
+    ev(4, "cp_changed", { delta: 1, reason: "secondary_discard", player: "me" }, "2026-10-15T12:00:03Z"),
+  ]);
+  expect(extras.warnings).toContain("extra_cp_cap");
+});
+
+it("segundo turno da rodada entra em command sem round_start", () => {
+  const events = [ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z")];
+  let seq = 2;
+  let state = applyEvents(events);
+  while (!(state.player === "me" && state.phase === "end_of_turn") && seq < 20) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:01:00Z`));
+  state = applyEvents(events);
+  expect(state.player).toBe("opponent");
+  expect(state.phase).toBe("command");
+  expect(state.round).toBe(1);
+});
+
 it("grava engaged_at_fight_start ao entrar em Fight", () => {
   const events = [
     ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),

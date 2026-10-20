@@ -59,7 +59,15 @@ export type Projection = {
   cp: { me: number; opponent: number };
   vp: { me: number; opponent: number };
   live: Record<number, LiveUnit>;
-  stratagem_uses: { stratagem_name: string; cp_spent: number; limit_overridden: boolean; phase: string; round: number; player: string }[];
+  stratagem_uses: {
+    stratagem_name: string;
+    cp_spent: number;
+    limit_overridden: boolean;
+    phase: string;
+    round: number;
+    player: string;
+    target_list_unit_id?: number | null;
+  }[];
   objectives: { objective_label: string; controller: string; round: number }[];
   scores: { player: string; kind: string; label: string; vp: number; round: number }[];
   shadow: {
@@ -78,6 +86,7 @@ export type Projection = {
   choices: Choice[];
   log: LogEntry[];
   cpLedger: { round: number; turn_player: string; phase: string; player: string; reason: string; delta: number }[];
+  eventRules: boolean;
 };
 
 export type ShadowNow = { own_dz: true; nml: boolean; opp_dz: boolean; known: boolean };
@@ -174,6 +183,7 @@ function empty(): Projection & { started: boolean } {
     choices: [],
     log: [],
     cpLedger: [],
+    eventRules: false,
     started: false,
   };
 }
@@ -211,12 +221,17 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     state.cp.me = Number(payload.cp_me || 0);
     state.cp.opponent = Number(payload.cp_opponent || 0);
     state.attachments = payload.attachments || [];
+    state.eventRules = Boolean(payload.event_rules);
     for (const unit of payload.units || []) {
       state.live[unit.list_unit_id] = blank(unit.list_unit_id, unit.name || "", 1);
     }
     return;
   }
   if (!state.started) return;
+  if (event.type === "game_settings_set") {
+    if ("event_rules" in payload) state.eventRules = Boolean(payload.event_rules);
+    return;
+  }
   if (event.type === "phase_advanced") {
     const index = PHASES.indexOf(state.phase as (typeof PHASES)[number]);
     let enteredMine = false;
@@ -225,8 +240,11 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       if (state.player !== state.firstPlayer) {
         state.round = Math.min(10, state.round + 1);
         state.player = state.firstPlayer;
-      } else state.player = state.player === "me" ? "opponent" : "me";
-      state.phase = "round_start";
+        state.phase = "round_start";
+      } else {
+        state.player = state.player === "me" ? "opponent" : "me";
+        state.phase = "command";
+      }
       enteredMine = state.player === "me";
     }
     if (enteredMine) {
@@ -286,11 +304,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       );
       if (var_boolTwice) state.warnings.push("core_cp_twice");
     }
-    if (
-      var_intDelta > 0 &&
-      var_strReason !== "core_cp" &&
-      payload.event_rules
-    ) {
+    if (var_intDelta > 0 && var_strReason !== "core_cp" && (state.eventRules || payload.event_rules)) {
       const var_intExtras = state.cpLedger.filter(
         (item) => item.round === state.round && item.player === var_strPlayer && item.delta > 0 && item.reason !== "core_cp",
       ).length;
@@ -310,11 +324,25 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
   if (event.type === "stratagem_used") {
     const name = payload.stratagem_name || "Stratagem";
     const player = payload.player || state.player;
-    const limit = payload.use_limit || "none";
-    const prior = state.stratagem_uses.filter((item) => item.stratagem_name === name && item.player === player && item.phase === state.phase && item.round === state.round);
-    if (limit === "per_phase" && prior.length && !payload.limit_overridden) {
+    const prior = state.stratagem_uses.filter(
+      (item) => item.stratagem_name === name && item.player === player && item.phase === state.phase && item.round === state.round,
+    );
+    if (prior.length && !payload.limit_overridden) {
       state.warnings.push("stratagem_limit");
       return;
+    }
+    const targetId = payload.target_list_unit_id != null ? Number(payload.target_list_unit_id) : null;
+    if (targetId != null) {
+      const sameTarget = state.stratagem_uses.some(
+        (item) =>
+          item.player === player &&
+          item.phase === state.phase &&
+          item.round === state.round &&
+          item.target_list_unit_id === targetId,
+      );
+      if (sameTarget) state.warnings.push("stratagem_same_target");
+      const target = state.live[targetId];
+      if (target?.battle_shocked) state.warnings.push("stratagem_target_shocked");
     }
     const spent = Number(payload.cp_spent || 0);
     if (spent && !changeCp(state, player, -spent, Boolean(payload.cp_override))) return;
@@ -325,6 +353,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       phase: state.phase,
       round: state.round,
       player,
+      target_list_unit_id: targetId,
     });
     return;
   }

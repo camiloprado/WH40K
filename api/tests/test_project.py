@@ -159,6 +159,40 @@ def test_battle_shock_persists_until_passed():
     assert state["live"][1]["battle_shocked"] is True
 
 
+def test_core_cp_and_event_rules():
+    start = {
+        **started(),
+        "payload": {**started()["payload"], "event_rules": True},
+    }
+    events = [
+        start,
+        ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+        ev(3, "cp_changed", {"delta": 1, "reason": "core_cp", "player": "me"}, "2026-10-15T12:00:02Z"),
+        ev(4, "cp_changed", {"delta": 1, "reason": "core_cp", "player": "opponent"}, "2026-10-15T12:00:03Z"),
+    ]
+    state = apply_events(events)
+    assert state["cp"] == {"me": 1, "opponent": 1}
+    assert state["event_rules"] is True
+    events.append(ev(5, "cp_changed", {"delta": 1, "reason": "core_cp", "player": "me"}, "2026-10-15T12:00:04Z"))
+    state = apply_events(events)
+    assert "core_cp_twice" in state["warnings"]
+
+
+def test_second_turn_skips_round_start():
+    events = [started()]
+    seq = 2
+    state = apply_events(events)
+    while not (state["player"] == "me" and state["phase"] == "end_of_turn") and seq < 20:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    events.append(ev(seq, "phase_advanced", {}, "2026-10-15T12:01:00Z"))
+    state = apply_events(events)
+    assert state["player"] == "opponent"
+    assert state["phase"] == "command"
+    assert state["round"] == 1
+
+
 def test_engaged_at_fight_start_on_entering_fight():
     events = [
         started(),

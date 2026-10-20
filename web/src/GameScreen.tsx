@@ -469,6 +469,7 @@ export function GameScreen() {
           <Inspector
             card={selectedCard}
             phase={phase}
+            mine={mine}
             leads={leaderOf.has(selectedCard.unit.id) ? names.get(leaderOf.get(selectedCard.unit.id)!) : undefined}
             ledBy={ledBy.has(selectedCard.unit.id) ? names.get(ledBy.get(selectedCard.unit.id)!) : undefined}
             onClose={() => setSelected(null)}
@@ -516,6 +517,7 @@ export function GameScreen() {
           menu={menu}
           card={cards.find((item) => item.unit.id === menu.unitId)!}
           phase={phase}
+          mine={mine}
           onClose={() => setMenu(null)}
           onPatch={(patch, label, overrides) => setUnit(menu.unitId, patch, label, overrides)}
           onZone={(place) => moveTo(menu.unitId, place)}
@@ -754,6 +756,7 @@ type PatchFn = (patch: Record<string, unknown>, label: string, overrides?: { key
 function Inspector({
   card,
   phase,
+  mine,
   leads,
   ledBy,
   onClose,
@@ -766,6 +769,7 @@ function Inspector({
 }: {
   card: Card;
   phase: string;
+  mine: boolean;
   leads?: string;
   ledBy?: string;
   onClose: () => void;
@@ -813,7 +817,7 @@ function Inspector({
           {primaryLabel}
         </button>
       )}
-      {phase === "battle_shock" && (
+      {phase === "battle_shock" && mine && (
         <div className="action-grid">
           <button onClick={() => onBattleShock(true)}>Passou</button>
           <button onClick={() => onBattleShock(false)}>Falhou</button>
@@ -879,6 +883,7 @@ function ContextMenu({
   menu,
   card,
   phase,
+  mine,
   onClose,
   onPatch,
   onZone,
@@ -888,6 +893,7 @@ function ContextMenu({
   menu: NonNullable<Menu>;
   card: Card;
   phase: string;
+  mine: boolean;
   onClose: () => void;
   onPatch: PatchFn;
   onZone: (place: Place) => void;
@@ -922,7 +928,7 @@ function ContextMenu({
       <button role="menuitem" onClick={run(() => onPatch({ engaged: !live.engaged }, live.engaged ? "fora de combate" : "engajada"))}>
         {live.engaged ? "Sair do combate" : "Engajada"}
       </button>
-      {phase === "battle_shock" && (
+      {phase === "battle_shock" && mine && (
         <>
           <button role="menuitem" onClick={run(() => onBattleShock(true))}>
             Battle-shock: passou
@@ -1128,7 +1134,7 @@ function ShadowPhaseCard({ projection, push }: { projection: Projection; push: P
 function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: string; mine: boolean; projection: Projection; bundle: any; cards: Card[]; push: PushFn }) {
   const [vp, setVp] = useState(5);
   const [kind, setKind] = useState<"primary" | "secondary">("primary");
-  const [eventRules, setEventRules] = useState(false);
+  const eventRules = projection.eventRules;
   const showShadow = isDaemonsArmy(bundle?.version?.faction_name);
   const pendingShock = cards.filter(
     (item) => item.zone === "table" && (item.live.below_half || item.live.battle_shocked),
@@ -1150,18 +1156,20 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
         <button
           className="primary wide"
           onClick={async () => {
-            await push("cp_changed", { delta: 1, reason: "core_cp", player: "me", event_rules: eventRules }, "Core CP +1 (você)");
-            await push(
-              "cp_changed",
-              { delta: 1, reason: "core_cp", player: "opponent", event_rules: eventRules },
-              "Core CP +1 (oponente)",
-            );
+            await push("cp_changed", { delta: 1, reason: "core_cp", player: "me" }, "Core CP +1 (você)");
+            await push("cp_changed", { delta: 1, reason: "core_cp", player: "opponent" }, "Core CP +1 (oponente)");
           }}
         >
           Gain Core CP (+1 para cada)
         </button>
         <label className="row">
-          <input type="checkbox" checked={eventRules} onChange={(event) => setEventRules(event.target.checked)} />
+          <input
+            type="checkbox"
+            checked={eventRules}
+            onChange={(event) =>
+              push("game_settings_set", { event_rules: event.target.checked }, event.target.checked ? "regras de evento ligadas" : "regras de evento desligadas")
+            }
+          />
           Regras de evento (aviso se passar de 1 CP extra na rodada)
         </label>
         {projection.warnings.includes("core_cp_twice") && (
@@ -1178,25 +1186,30 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
     const var_objShadow = shadowNow(projection);
     return (
       <section className="panel">
-        <h2>Battle-shock</h2>
-        <p className="muted">Lista quem está em battle-shock ou na metade da força ou abaixo. Marque Passou ou Falhou.</p>
+        <h2>Battle-shock {mine ? "" : "(turno do oponente)"}</h2>
+        {mine ? (
+          <p className="muted">Lista quem está em battle-shock ou na metade da força ou abaixo. Marque Passou ou Falhou.</p>
+        ) : (
+          <p className="muted">Testes do oponente — você não marca Passou/Falhou nas suas unidades.</p>
+        )}
         {showShadow && !var_objShadow.known && (
           <p className="confirm-warn">Shadow não informado nesta fase — registre antes de Manifestation/Terror.</p>
         )}
         {showShadow && <ShadowPhaseCard projection={projection} push={push} />}
-        {pendingShock.map((item) => (
-          <div key={item.unit.id} className="row between">
-            <span>
-              {item.unit.datasheet_name}
-              {item.live.battle_shocked ? " (já em battle-shock)" : ""}
-              {item.live.below_half ? " (metade ou abaixo)" : ""}
-            </span>
-            <span className="row">
-              <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: true }, `${item.unit.datasheet_name}: passou`)}>Passou</button>
-              <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: false }, `${item.unit.datasheet_name}: falhou`)}>Falhou</button>
-            </span>
-          </div>
-        ))}
+        {mine &&
+          pendingShock.map((item) => (
+            <div key={item.unit.id} className="row between">
+              <span>
+                {item.unit.datasheet_name}
+                {item.live.battle_shocked ? " (já em battle-shock)" : ""}
+                {item.live.below_half ? " (metade ou abaixo)" : ""}
+              </span>
+              <span className="row">
+                <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: true }, `${item.unit.datasheet_name}: passou`)}>Passou</button>
+                <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: false }, `${item.unit.datasheet_name}: falhou`)}>Falhou</button>
+              </span>
+            </div>
+          ))}
       </section>
     );
   }
@@ -1255,35 +1268,64 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
 }
 
 function Stratagems({ bundle, projection, push }: { bundle: any; projection: Projection; push: PushFn }) {
-  const list = (bundle.abilities || []).filter((item: any) => item.kind === "stratagem");
-  if (!list.length) return null;
-  const cp = projection.player === "me" ? projection.cp.me : projection.cp.opponent;
+  const effects = (bundle.rule_effects || []).filter((effect: any) => effect.effect_kind === "stratagem");
+  const abilityIds = new Set(
+    effects
+      .filter((effect: any) => effect.phase === projection.phase || effect.phase === "any")
+      .filter((effect: any) => effect.turn_owner === "both" || effect.turn_owner === "own" || !effect.turn_owner)
+      .map((effect: any) => effect.ability_id),
+  );
+  const all = (bundle.abilities || []).filter((item: any) => item.kind === "stratagem");
+  const now = all.filter((item: any) => abilityIds.has(item.id) || !effects.some((effect: any) => effect.ability_id === item.id));
+  const later = all.filter((item: any) => !now.includes(item));
+  if (!all.length) return null;
+  const cp = projection.cp.me;
+  const render = (item: any, markUsed: boolean) => {
+    const used = projection.stratagem_uses.some(
+      (use) => use.stratagem_name === item.name && use.phase === projection.phase && use.round === projection.round && use.player === "me",
+    );
+    const cost = item.cp_cost || 0;
+    return (
+      <button
+        key={item.id}
+        className={`stratagem ${used ? "used" : ""} ${cost > cp ? "short" : ""}`}
+        onClick={() => {
+          if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
+          const short = cost > cp;
+          if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
+          push(
+            "stratagem_used",
+            {
+              ability_id: item.id,
+              stratagem_name: item.name,
+              cp_spent: cost,
+              use_limit: item.use_limit || "per_phase",
+              player: "me",
+              limit_overridden: used,
+              cp_override: short,
+            },
+            `${item.name} (−${cost} CP)`,
+          );
+        }}
+      >
+        <span>
+          {item.name}
+          {markUsed && used ? " · Usado nesta fase" : ""}
+        </span>
+        <span className="mono">{cost} CP</span>
+      </button>
+    );
+  };
   return (
     <section className="panel">
       <h2>Stratagems</h2>
-      {list.map((item: any) => {
-        const used = projection.stratagem_uses.some((use) => use.stratagem_name === item.name && use.phase === projection.phase && use.round === projection.round && use.player === projection.player);
-        const cost = item.cp_cost || 0;
-        return (
-          <button
-            key={item.id}
-            className={`stratagem ${used ? "used" : ""} ${cost > cp ? "short" : ""}`}
-            onClick={() => {
-              if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
-              const short = cost > cp;
-              if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
-              push(
-                "stratagem_used",
-                { ability_id: item.id, stratagem_name: item.name, cp_spent: cost, use_limit: item.use_limit || "none", player: projection.player, limit_overridden: used, cp_override: short },
-                `${item.name} (−${cost} CP)`,
-              );
-            }}
-          >
-            <span>{item.name}</span>
-            <span className="mono">{cost} CP</span>
-          </button>
-        );
-      })}
+      {now.map((item: any) => render(item, true))}
+      {later.length > 0 && (
+        <details>
+          <summary>Outras fases ({later.length})</summary>
+          {later.map((item: any) => render(item, false))}
+        </details>
+      )}
     </section>
   );
 }
