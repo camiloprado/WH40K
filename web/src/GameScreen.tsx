@@ -3,7 +3,21 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "./api";
 import { bundleFor, db, deviceId, storeBundle, type EventRecord } from "./db";
-import { activeChoice, applyEvents, isChoiceActive, LANES, PHASES, zoneOf, type Choice, type Lane, type LiveUnit, type LogEntry, type Projection, type Zone } from "./engine/project";
+import {
+  activeChoice,
+  applyEvents,
+  isChoiceActive,
+  LANES,
+  PHASES,
+  shadowNow,
+  zoneOf,
+  type Choice,
+  type Lane,
+  type LiveUnit,
+  type LogEntry,
+  type Projection,
+  type Zone,
+} from "./engine/project";
 import { evaluateUnit, type Eligibility, type Moved } from "./engine/eligibility";
 import { flushSync } from "./sync";
 import { HypothesisBadge } from "./components";
@@ -1022,13 +1036,90 @@ function EffectRowLive({ effect, chosen, onChoose }: { effect: PhaseEffect; chos
 
 type PushFn = (type: string, payload: Record<string, unknown>, label?: string) => Promise<void>;
 
+function isDaemonsArmy(factionName: string | undefined): boolean {
+  const var_strName = (factionName || "").toLowerCase();
+  if (var_strName.includes("heretic astartes") || var_strName.includes("chaos knights")) return false;
+  return var_strName.includes("chaos daemons") || var_strName.includes("legiones daemonica");
+}
+
+function ShadowPhaseCard({ projection, push }: { projection: Projection; push: PushFn }) {
+  const var_objNow = shadowNow(projection);
+  const [nml, setNml] = useState(var_objNow.nml);
+  const [opp, setOpp] = useState(var_objNow.opp_dz);
+  useEffect(() => {
+    setNml(var_objNow.nml);
+    setOpp(var_objNow.opp_dz);
+  }, [projection.round, projection.player, projection.phase, var_objNow.known, var_objNow.nml, var_objNow.opp_dz]);
+  const var_objPrev = [...projection.shadow]
+    .reverse()
+    .find(
+      (item) =>
+        !(item.round === projection.round && item.turn_player === projection.player && item.phase === projection.phase),
+    );
+  return (
+    <div className="shadow">
+      <p>
+        Shadow nesta fase <HypothesisBadge on />
+        {!var_objNow.known && <span className="warn"> — não informado nesta fase</span>}
+      </p>
+      <p className="muted">Minha zona: sempre</p>
+      <label className="row">
+        <input type="checkbox" checked={nml} onChange={(event) => setNml(event.target.checked)} />
+        Terra de Ninguém no Shadow
+      </label>
+      <label className="row">
+        <input type="checkbox" checked={opp} onChange={(event) => setOpp(event.target.checked)} />
+        Zona do oponente no Shadow
+      </label>
+      <div className="row">
+        <button
+          onClick={() =>
+            push(
+              "shadow_set",
+              {
+                player: "me",
+                turn_player: projection.player,
+                phase: projection.phase,
+                nml_in_shadow: nml,
+                opp_dz_in_shadow: opp,
+              },
+              "Shadow da fase registrado",
+            )
+          }
+        >
+          Registrar Shadow
+        </button>
+        {var_objPrev && (
+          <button
+            onClick={() => {
+              setNml(var_objPrev.nml_in_shadow);
+              setOpp(var_objPrev.opp_dz_in_shadow);
+              push(
+                "shadow_set",
+                {
+                  player: "me",
+                  turn_player: projection.player,
+                  phase: projection.phase,
+                  nml_in_shadow: var_objPrev.nml_in_shadow,
+                  opp_dz_in_shadow: var_objPrev.opp_dz_in_shadow,
+                },
+                "Shadow igual à fase anterior",
+              );
+            }}
+          >
+            Igual à fase anterior
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: string; mine: boolean; projection: Projection; bundle: any; cards: Card[]; push: PushFn }) {
-  const [shadow, setShadow] = useState(0);
-  const [whole, setWhole] = useState(false);
   const [vp, setVp] = useState(5);
   const [kind, setKind] = useState<"primary" | "secondary">("primary");
   const [eventRules, setEventRules] = useState(false);
-  const current = projection.shadow.find((item) => item.round === projection.round && item.player === "me");
+  const showShadow = isDaemonsArmy(bundle?.version?.faction_name);
   const pendingShock = cards.filter(
     (item) => item.zone === "table" && (item.live.below_half || item.live.battle_shocked),
   );
@@ -1038,6 +1129,7 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
       <section className="panel">
         <h2>Início da rodada</h2>
         <p className="muted">Antes da Command: efeitos de começo de battle round. O CP entra na fase seguinte.</p>
+        {showShadow && <ShadowPhaseCard projection={projection} push={push} />}
       </section>
     );
   }
@@ -1068,46 +1160,27 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
         {eventRules && projection.warnings.includes("extra_cp_cap") && (
           <p className="confirm-warn">Mais de 1 CP extra nesta rodada (Event Companion).</p>
         )}
-        {mine && (
-          <div className="shadow">
-            <p>
-              Shadow of Chaos <HypothesisBadge on />
-            </p>
-            <label className="row">
-              Objetivos em Shadow
-              <input
-                className="mono narrow"
-                type="number"
-                min={0}
-                max={20}
-                value={current?.objectives_controlled ?? shadow}
-                onChange={(event) => setShadow(Number(event.target.value))}
-              />
-            </label>
-            <label className="row">
-              <input type="checkbox" checked={current?.whole_board ?? whole} onChange={(event) => setWhole(event.target.checked)} />
-              Tabuleiro todo em Shadow
-            </label>
-            <button
-              onClick={() =>
-                push("shadow_set", { player: "me", objectives_controlled: shadow, whole_board: whole }, "Shadow registrado")
-              }
-            >
-              Registrar Shadow
-            </button>
-          </div>
-        )}
+        {showShadow && <ShadowPhaseCard projection={projection} push={push} />}
       </section>
     );
   }
   if (phase === "battle_shock") {
+    const var_objShadow = shadowNow(projection);
     return (
       <section className="panel">
         <h2>Battle-shock</h2>
         <p className="muted">Lista quem está em battle-shock ou na metade da força ou abaixo. Marque Passou ou Falhou.</p>
+        {showShadow && !var_objShadow.known && (
+          <p className="confirm-warn">Shadow não informado nesta fase — registre antes de Manifestation/Terror.</p>
+        )}
+        {showShadow && <ShadowPhaseCard projection={projection} push={push} />}
         {pendingShock.map((item) => (
           <div key={item.unit.id} className="row between">
-            <span>{item.unit.datasheet_name}</span>
+            <span>
+              {item.unit.datasheet_name}
+              {item.live.battle_shocked ? " (já em battle-shock)" : ""}
+              {item.live.below_half ? " (metade ou abaixo)" : ""}
+            </span>
             <span className="row">
               <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: true }, `${item.unit.datasheet_name}: passou`)}>Passou</button>
               <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: false }, `${item.unit.datasheet_name}: falhou`)}>Falhou</button>
@@ -1157,6 +1230,14 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
             Anotar VP
           </button>
         </div>
+      </section>
+    );
+  }
+  if (showShadow) {
+    return (
+      <section className="panel">
+        <h2>{PHASE_NAMES[phase] || phase}</h2>
+        <ShadowPhaseCard projection={projection} push={push} />
       </section>
     );
   }
@@ -1247,7 +1328,10 @@ export function describe(entry: LogEntry, names: Map<number, string>) {
     case "objective_set":
       return `Objetivo ${p.objective_label}: ${p.controller}`;
     case "shadow_set":
-      return `Shadow: ${p.objectives_controlled} objetivos${p.whole_board ? ", tabuleiro todo" : ""}`;
+      if (p.nml_in_shadow !== undefined || p.opp_dz_in_shadow !== undefined) {
+        return `Shadow fase ${p.phase || ""}: TdN ${p.nml_in_shadow ? "sim" : "não"}, zona oponente ${p.opp_dz_in_shadow ? "sim" : "não"}`;
+      }
+      return `Shadow (legado): ${p.objectives_controlled} objetivos${p.whole_board ? ", tabuleiro todo" : ""}`;
     case "battleshock_result":
       return `${unit}: battle-shock ${p.passed ? "passou" : "falhou"}`;
     case "effect_chosen":

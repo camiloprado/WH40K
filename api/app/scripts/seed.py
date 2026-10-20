@@ -92,6 +92,7 @@ def main() -> None:
                     "is_hypothesis": True,
                 },
             )
+        _seed_shadow_effects(db, faction.id, detachment.id)
         seed_path = Path(get_settings().model_config.get("env_file") or ".") 
         file = Path("seeds/belakor.json")
         if not file.exists():
@@ -110,6 +111,76 @@ def main() -> None:
         db.commit()
     finally:
         db.close()
+
+
+def _seed_shadow_effects(db, faction_id: int, detachment_id: int) -> None:
+    """Paráfrases do Faction Pack Daemons — sem texto de regra copiado."""
+    rows = [
+        (
+            "Daemonic Manifestation",
+            "battle_shock",
+            "prompt",
+            False,
+            "Unidade sua no Shadow: +1 no teste. Passou: cura D3 num modelo; Battleline: volta até D3 modelos (sem CHARACTER). Insane Bravery conta como passou.",
+            {"game.shadow_of_chaos": "own_dz"},
+        ),
+        (
+            "Daemonic Manifestation (outros testes)",
+            "any",
+            "reminder",
+            False,
+            "Manifestation também vale em testes fora da Command (ex.: Desperate Escape), se a unidade estiver no Shadow.",
+            {"game.shadow_of_chaos": "own_dz"},
+        ),
+        (
+            "Daemonic Terror",
+            "battle_shock",
+            "reminder",
+            True,
+            "Inimigo no seu Shadow ou a 6\" de Greater Daemon: −1 no teste; falhou: D3 mortal wounds. Distância: lembrete manual.",
+            {"game.shadow_of_chaos": "nml"},
+        ),
+        (
+            "Plague Legion — Shadow",
+            "command",
+            "reminder",
+            True,
+            "Escolha um inimigo no seu Shadow (inclui a 9\" de Nurgle): ele faz teste de battle-shock. Só com destacamento Plague Legion.",
+            {"game.shadow_of_chaos": "own_dz"},
+        ),
+    ]
+    for name, phase, kind, hypothesis, text, condition in rows:
+        ability = db.scalar(
+            select(Ability).where(Ability.kind == "faction", Ability.faction_id == faction_id, Ability.name == name)
+        )
+        if ability is None:
+            ability = Ability(
+                kind="faction",
+                faction_id=faction_id,
+                name=name,
+                summary_user=text,
+                is_hypothesis=hypothesis,
+                source="user",
+            )
+            db.add(ability)
+            db.flush()
+        exists = db.scalar(
+            select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
+        )
+        if exists is None:
+            upsert_effect(
+                db,
+                ability.id,
+                {
+                    "phase": phase,
+                    "timing": "during",
+                    "effect_kind": kind,
+                    "owner_label": "Chaos Daemons",
+                    "effect_text": text,
+                    "is_hypothesis": hypothesis,
+                    "condition_json": condition,
+                },
+            )
 
 
 def os_env_version() -> bool:
