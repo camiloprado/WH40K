@@ -81,14 +81,19 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 
 ### Usar no celular (Tailscale)
 
-O Caddy fica só em loopback HTTP. O HTTPS e o certificado válidos vêm do Tailscale na frente do PC:
+O Caddy fica só em loopback HTTP. O HTTPS e o certificado válidos vêm do Tailscale na frente do PC.
+
+1. Descubra o FQDN do PC: `tailscale status --json` → campo `Self.DNSName` **sem** o ponto final (ex.: `meupc.tailnet-name.ts.net`).
+2. No `.env` (a partir do `.env.example`): `EXTRA_HOSTS=<pc>.<tailnet>.ts.net` — sem wildcard; só FQDN exatos, separados por vírgula se houver mais de um.
+3. Recrie a API para ler o host: `docker compose up -d --force-recreate api`.
+4. Sirva o Caddy pela tailnet:
 
 ```powershell
 # com a stack no ar (Caddy em 127.0.0.1:18081)
 tailscale serve --bg --https=443 http://127.0.0.1:18081
 ```
 
-No Android da mesma tailnet, abra `https://<seu-pc>.<tailnet>.ts.net`. O PWA instala sem aviso de certificado. **Não** use `tailscale funnel` (expõe à internet). Volumes `apidata` e `apibackups` preservam o hash do token e os backups entre rebuilds.
+No Android da mesma tailnet, abra `https://<seu-pc>.<tailnet>.ts.net` e faça login. O PWA instala sem aviso de certificado. **Não** use `tailscale funnel` (expõe à internet). Volumes `apidata` e `apibackups` preservam o hash do token e os backups entre rebuilds.
 
 ## Testes
 

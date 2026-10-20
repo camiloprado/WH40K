@@ -18,6 +18,11 @@ def create_app() -> FastAPI:
     app.add_middleware(SecurityMiddleware)
     app.include_router(router)
 
+    if settings.app_env == "prod" and not (settings.extra_hosts or "").strip():
+        logging.getLogger("list-companion").warning(
+            "EXTRA_HOSTS vazio em prod: o Host da Tailscale (pc.tailnet.ts.net) recebe 400 até configurar o .env (SEC-N1)."
+        )
+
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException):
         if isinstance(exc.detail, dict):
