@@ -9,7 +9,8 @@ describe("dano esperado", () => {
 
   it("keptCapped exato", () => {
     expect(keptCapped(3, 2, 1)).toBe(2);
-    expect(keptCapped(3, 2, 4 / 6)).toBeCloseTo(100 / 81, 3);
+    // Face D=3, W=2, keep 4/6 (FNP 5+) — Correcoes ≈ 1,7037
+    expect(keptCapped(3, 2, 4 / 6)).toBeCloseTo(1.7037, 3);
   });
 
   // BS3+ S4 AP-1 vs T4 Sv3+ → 4/6 × 3/6 × 3/6 = 1/6 por ataque
@@ -65,7 +66,7 @@ describe("dano esperado", () => {
 
   it("acerto limitado a 5/6", () => {
     const raw = expectedDamage({ ...baseWeapon, skill: 1, damage: "1" }, baseTarget);
-    // 2 × 5/6 × 3/6 × 3/6 × 1 = 2 × 5/6 × 1/6 = 10/36 ≈ 0.2778
-    expect(raw).toBeCloseTo(10 / 36, 5);
+    // 2 × 5/6 × 3/6 × 3/6 × 1 = 2 × 5/6 × 1/4 = 10/24
+    expect(raw).toBeCloseTo(10 / 24, 5);
   });
 });
