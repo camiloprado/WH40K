@@ -1156,9 +1156,13 @@ export function WeaponsScreen() {
   const query = useQuery({ queryKey: ["bundle", vid], queryFn: () => api<any>(`/versions/${vid}/bundle`), retry: false });
   const bundle = query.data || offline;
   const [target, setTarget] = useState(0);
+  const [stationary, setStationary] = useState(false);
+  const [charged, setCharged] = useState(false);
+  const [halfRange, setHalfRange] = useState(false);
   if (!bundle) return <VersionShell vid={vid}>Carregando…</VersionShell>;
   const profiles = bundle.target_profiles || [];
   const chosen = profiles[target];
+  const toggles = { stationary, charged, halfRange };
   return (
     <VersionShell
       vid={vid}
@@ -1176,9 +1180,20 @@ export function WeaponsScreen() {
     >
       <section className="card stack">
         <p className="muted">
-          Dano médio aproximado da unidade inteira (× count das armas), limitado ao W do alvo; sem keywords.{" "}
+          Dano esperado com Lethal, Sustained, Torrent e Twin-linked. Outras keywords ainda não entram.{" "}
           <span className="hypothesis">aproximado</span>
         </p>
+        <div className="toggles">
+          <button type="button" className={`toggle ${stationary ? "on" : ""}`} onClick={() => setStationary((v) => !v)}>
+            Parada
+          </button>
+          <button type="button" className={`toggle ${charged ? "on" : ""}`} onClick={() => setCharged((v) => !v)}>
+            Carregou
+          </button>
+          <button type="button" className={`toggle ${halfRange ? "on" : ""}`} onClick={() => setHalfRange((v) => !v)}>
+            Meio alcance
+          </button>
+        </div>
         {!profiles.length && <p className="warn">Cadastre um perfil de alvo no catálogo para ver o dano esperado.</p>}
         {bundle.weapons?.some((item: any) => item.is_stub) && <p className="warn">Algumas armas não têm perfil numérico e aparecem como "—".</p>}
         <table className="units">
@@ -1203,6 +1218,7 @@ export function WeaponsScreen() {
                       const raw = expectedDamage(
                         { ...weapon, name: weapon.weapon_name, count: weapon.count ?? 1 },
                         chosen,
+                        toggles,
                       );
                       return raw == null ? (
                         <span title="perfil incompleto">—</span>

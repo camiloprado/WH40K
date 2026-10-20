@@ -25,11 +25,17 @@ export type DamageToggles = {
   lethal?: boolean;
   twinLinked?: boolean;
   torrent?: boolean;
+  /** B1: Heavy / "parada" */
+  stationary?: boolean;
+  /** B1: Charge / "carregou" */
+  charged?: boolean;
+  /** B1: Half range / "meio alcance" */
+  halfRange?: boolean;
 };
 
-export function diceAverage(expr: string | null | undefined): number {
+export function diceAverage(expr: string | null | undefined): number | null {
   const var_lstFaces = damageFaces(expr);
-  if (!var_lstFaces) return 0;
+  if (!var_lstFaces) return null;
   return var_lstFaces.reduce((sum, [d, p]) => sum + d * p, 0);
 }
 
@@ -91,13 +97,28 @@ function woundChance(strength: number, toughness: number): number {
   return 2 / 6;
 }
 
+function sustainedValue(keys: string[], toggles?: DamageToggles): number {
+  if (toggles?.sustained != null) return toggles.sustained;
+  const sustainedMatch = keys.find((item) => item.startsWith("SUSTAINED"));
+  if (!sustainedMatch) return 0;
+  const rest = sustainedMatch.replace(/^SUSTAINED(?:\s+HITS)?\s*/i, "").trim();
+  if (!rest) return 1;
+  const avg = diceAverage(rest);
+  if (avg != null) return avg;
+  const digits = Number(rest.replace(/[^\d.]/g, ""));
+  return Number.isFinite(digits) && digits > 0 ? digits : 1;
+}
+
 function keywordFlags(weapon: WeaponProfile, toggles?: DamageToggles) {
   const keys = (weapon.keywords || []).map((item) => item.toUpperCase());
-  const sustainedMatch = keys.find((item) => item.startsWith("SUSTAINED"));
-  const sustainedFromKw = sustainedMatch ? Number(sustainedMatch.replace(/[^\d]/g, "") || 1) : 0;
+  // Lethal condicional ("contra X") só entra via toggle até existir alvo com keywords (B1).
+  const lethalRaw = keys.some((item) => item.includes("LETHAL"));
+  const lethalConditional = keys.some(
+    (item) => item.includes("LETHAL") && (item.includes("(") || /\b(AGAINST|VS|CONTRA)\b/.test(item)),
+  );
   return {
-    sustained: toggles?.sustained ?? sustainedFromKw,
-    lethal: toggles?.lethal ?? keys.some((item) => item.includes("LETHAL")),
+    sustained: sustainedValue(keys, toggles),
+    lethal: toggles?.lethal ?? (lethalRaw && !lethalConditional),
     twinLinked: toggles?.twinLinked ?? keys.some((item) => item.includes("TWIN")),
     torrent: toggles?.torrent ?? keys.some((item) => item.includes("TORRENT")),
   };
@@ -106,6 +127,7 @@ function keywordFlags(weapon: WeaponProfile, toggles?: DamageToggles) {
 /**
  * Média por ataque com FNP e teto W exatos por face; multiplica pelo count; teto models×W.
  * Keywords: Torrent (auto-hit), Lethal Hits, Sustained Hits N, Twin-linked (rerroll wound).
+ * Lethal+Sustained: (h−c)·w + c + c·S·w (B1).
  */
 export function expectedDamage(
   weapon: WeaponProfile,
@@ -114,27 +136,27 @@ export function expectedDamage(
 ): number | null {
   const var_lstAttacks = damageFaces(weapon.attacks);
   const var_lstDamage = damageFaces(weapon.damage);
-  if (!var_lstAttacks || !var_lstDamage || weapon.strength == null) return null;
+  if (!var_lstAttacks || !var_lstDamage || weapon.strength == null || weapon.skill == null) return null;
   const flags = keywordFlags(weapon, toggles);
   const var_fltAttacks = var_lstAttacks.reduce((sum, [d, p]) => sum + d * p, 0);
-  const var_intSkill = weapon.skill ?? 4;
+  const var_intSkill = weapon.skill;
   let var_fltHit = flags.torrent ? 1 : Math.min(5 / 6, Math.max(0, (7 - var_intSkill) / 6));
   let var_fltWound = woundChance(weapon.strength, target.toughness);
   if (flags.twinLinked) {
     var_fltWound = var_fltWound + (1 - var_fltWound) * var_fltWound;
   }
-  // Lethal: hits críticos (6) viram feridas automáticas — aproxima fracção 1/6 dos hits.
   const var_fltCrit = flags.torrent ? 0 : 1 / 6;
-  const var_fltNormalHit = Math.max(0, var_fltHit - (flags.lethal ? var_fltCrit : 0));
-  const var_fltAutoWound = flags.lethal ? var_fltCrit : 0;
-  // Sustained: cada hit crítico gera +N hits extras (média).
-  const var_fltExtraHits = flags.sustained > 0 ? var_fltCrit * flags.sustained : 0;
-  const var_fltHitEff = var_fltHit + var_fltExtraHits;
-  const var_fltWoundPass =
-    flags.lethal
-      ? (var_fltNormalHit / Math.max(var_fltHit, 1e-9)) * var_fltWound * var_fltHitEff +
-        var_fltAutoWound * (var_fltHitEff / Math.max(var_fltHit, 1e-9))
-      : var_fltHitEff * var_fltWound;
+  const var_fltS = flags.sustained > 0 ? flags.sustained : 0;
+  // Por ataque: (h−c)·w + c·[lethal] + c·S·w  (sem lethal, c volta a ferir com w).
+  let var_fltWoundPass: number;
+  if (flags.lethal) {
+    const h = var_fltHit;
+    const c = var_fltCrit;
+    const w = var_fltWound;
+    var_fltWoundPass = (h - c) * w + c + c * var_fltS * w;
+  } else {
+    var_fltWoundPass = (var_fltHit + var_fltCrit * var_fltS) * var_fltWound;
+  }
   const var_intNeeded = target.save - (weapon.ap ?? 0);
   let var_fltSaveFail = var_intNeeded > 6 ? 1 : Math.max(0, 1 - (7 - Math.max(var_intNeeded, 2)) / 6);
   if (target.invuln) {

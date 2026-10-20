@@ -5,6 +5,7 @@ describe("dano esperado", () => {
   it("média de dados", () => {
     expect(diceAverage("D6")).toBe(3.5);
     expect(diceAverage("2D6+1")).toBe(8);
+    expect(diceAverage("X")).toBeNull();
   });
 
   it("keptCapped exato", () => {
@@ -62,17 +63,39 @@ describe("dano esperado", () => {
     expect(expectedDamage({ ...baseWeapon, attacks: null }, baseTarget)).toBeNull();
     expect(expectedDamage({ ...baseWeapon, damage: "X" }, baseTarget)).toBeNull();
     expect(expectedDamage({ ...baseWeapon, strength: null }, baseTarget)).toBeNull();
+    expect(expectedDamage({ ...baseWeapon, skill: null }, baseTarget)).toBeNull();
   });
 
   it("acerto limitado a 5/6", () => {
-    const raw = expectedDamage({ ...baseWeapon, skill: 1, damage: "1" }, baseTarget);
-    // 2 × 5/6 × 3/6 × 3/6 × 1 = 2 × 5/6 × 1/4 = 10/24
+    const raw = expectedDamage({ ...baseWeapon, skill: 2, damage: "1" }, baseTarget);
+    // skill 2 → hit 5/6; 2 × 5/6 × 3/6 × 3/6 × 1 = 10/24
     expect(raw).toBeCloseTo(10 / 24, 5);
   });
 
-  it("B1 Torrent auto-hit aumenta o dano médio", () => {
-    const base = expectedDamage({ ...baseWeapon, skill: 4, damage: "1" }, baseTarget)!;
-    const torrent = expectedDamage({ ...baseWeapon, skill: 4, damage: "1", keywords: ["TORRENT"] }, baseTarget)!;
-    expect(torrent).toBeGreaterThan(base);
+  it("B1 keywords absolutas (A3 BS3+ S4 AP-1 D1 vs T4 Sv6+ W1 ×10)", () => {
+    const weapon = { name: "Probe", attacks: "3", skill: 3, strength: 4, ap: -1, damage: "1" };
+    const target = { name: "Alvo", toughness: 4, save: 6, wounds: 1, models: 10 };
+    expect(expectedDamage(weapon, target)).toBeCloseTo(1.0, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["SUSTAINED HITS 1"] }, target)).toBeCloseTo(1.25, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["LETHAL HITS"] }, target)).toBeCloseTo(1.25, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["TWIN-LINKED"] }, target)).toBeCloseTo(1.5, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["TORRENT"] }, target)).toBeCloseTo(1.5, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["LETHAL HITS", "SUSTAINED HITS 1"] }, target)).toBeCloseTo(1.5, 5);
+    expect(expectedDamage({ ...weapon, keywords: ["SUSTAINED HITS D3"] }, target)).toBeCloseTo(1.5, 5);
+  });
+
+  it("B1 Lethal condicional só via toggle", () => {
+    const weapon = {
+      name: "Probe",
+      attacks: "3",
+      skill: 3,
+      strength: 4,
+      ap: -1,
+      damage: "1",
+      keywords: ["LETHAL HITS (against INFANTRY)"],
+    };
+    const target = { name: "Alvo", toughness: 4, save: 6, wounds: 1, models: 10 };
+    expect(expectedDamage(weapon, target)).toBeCloseTo(1.0, 5);
+    expect(expectedDamage(weapon, target, { lethal: true })).toBeCloseTo(1.25, 5);
   });
 });
