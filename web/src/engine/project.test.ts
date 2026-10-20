@@ -37,20 +37,24 @@ it("mantém battle-shock até passar no teste", () => {
     ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
     ev(3, "battleshock_result", { list_unit_id: 1, passed: false }, "2026-10-15T12:00:02Z"),
   ];
-  for (let index = 4; index < 28; index += 1) {
-    events.push(ev(index, "phase_advanced", {}, `2026-10-15T12:01:${String(index).padStart(2, "0")}Z`));
+  let seq = 4;
+  let state = applyEvents(events);
+  for (let step = 0; step < 32; step += 1) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:01:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+    if (state.round === 2 && state.player === "me" && state.phase === "command") break;
   }
-  const state = applyEvents(events);
   expect(state.round).toBe(2);
   expect(state.player).toBe("me");
   expect(state.live[1].battle_shocked).toBe(true);
-  const pass = ev(28, "battleshock_result", { list_unit_id: 1, passed: true }, "2026-10-15T12:02:00Z");
+  const pass = ev(seq, "battleshock_result", { list_unit_id: 1, passed: true }, "2026-10-15T12:02:00Z");
   const cleared = applyEvents([...events, pass]);
   expect(cleared.live[1].battle_shocked).toBe(false);
   const undone = applyEvents([
     ...events,
     pass,
-    { ...ev(29, "undo", { undoes_event_id: pass.id }, "2026-10-15T12:02:01Z"), undoes_event_id: pass.id },
+    { ...ev(seq + 1, "undo", { undoes_event_id: pass.id }, "2026-10-15T12:02:01Z"), undoes_event_id: pass.id },
   ]);
   expect(undone.live[1].battle_shocked).toBe(true);
 });

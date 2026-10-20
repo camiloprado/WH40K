@@ -83,27 +83,65 @@ export function evaluateUnit(input: {
   let var_lstAllowed = var_lstNames;
   let var_boolInactive = false;
   if (input.phase === "shooting") {
-    if (input.unit.moved === "advanced" && !var_fnPermitted("shoot_after_advance")) {
-      const var_lstAssault = var_lstWeapons
-        .filter((item) => keywordsOf(item).includes(con_strAssault))
-        .map((item) => item.name);
-      if (var_lstAssault.length === 0) {
-        var_boolInactive = true;
-        var_lstReasons.push("Avançou — sem ASSAULT");
-        var_lstAllowed = [];
-      } else {
-        var_lstAllowed = var_lstAssault;
-        var_lstReasons.push("Só armas ASSAULT");
-      }
-    } else if (input.unit.moved === "advanced" && var_fnPermitted("shoot_after_advance")) {
+    const var_boolMonsterVehicle = (input.unitKeywords ?? []).some(
+      (item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE",
+    );
+    if (input.unit.engaged && var_fnPermitted("shoot_engaged")) {
       var_lstReasons.push("Permitido por regra");
-      if (var_lstWeaponFilters.length) {
-        var_lstAllowed = var_lstWeapons
-          .filter((item) => var_lstWeaponFilters.every((key) => (item.keywords ?? []).includes(key)))
+    } else if (input.unit.engaged) {
+      if (input.unit.moved === "advanced") {
+        var_boolInactive = true;
+        var_lstAllowed = [];
+        var_lstReasons.push("Engajada e avançou — sem tiro");
+      } else if (!var_boolMonsterVehicle) {
+        const var_lstClose = var_lstWeapons
+          .filter((item) => isCloseQuarters(item))
+          .filter((item) => !keywordsOf(item).includes(con_strBlast))
           .map((item) => item.name);
-        if (var_lstAllowed.length === 0) {
+        if (var_lstClose.length === 0) {
+          var_boolInactive = true;
+          var_lstAllowed = [];
+          var_lstReasons.push("Em combate — sem arma CLOSE-QUARTERS");
+        } else {
+          var_lstAllowed = var_lstClose;
+          var_lstReasons.push("Só CLOSE-QUARTERS / PISTOL, só contra quem está engajado com ela");
+        }
+      } else {
+        const var_lstNonCq = var_lstWeapons.filter((item) => !isCloseQuarters(item)).map((item) => item.name);
+        const var_lstBlast = var_lstWeapons
+          .filter((item) => keywordsOf(item).includes(con_strBlast))
+          .map((item) => item.name);
+        var_lstReasons.push(
+          "MONSTER/VEHICLE engajado: −1 para acertar, exceto CLOSE-QUARTERS contra quem está engajado com ela",
+        );
+        if (var_lstNonCq.length) var_lstReasons.push(`−1 para acertar com: ${var_lstNonCq.join(", ")}`);
+        if (var_lstBlast.length) {
+          var_lstReasons.push(`BLAST não mira a unidade engajada: ${var_lstBlast.join(", ")}`);
+        }
+      }
+    } else {
+      if (input.unit.moved === "advanced" && !var_fnPermitted("shoot_after_advance")) {
+        const var_lstAssault = var_lstWeapons
+          .filter((item) => keywordsOf(item).includes(con_strAssault))
+          .map((item) => item.name);
+        if (var_lstAssault.length === 0) {
           var_boolInactive = true;
           var_lstReasons.push("Avançou — sem ASSAULT");
+          var_lstAllowed = [];
+        } else {
+          var_lstAllowed = var_lstAssault;
+          var_lstReasons.push("Só armas ASSAULT");
+        }
+      } else if (input.unit.moved === "advanced" && var_fnPermitted("shoot_after_advance")) {
+        var_lstReasons.push("Permitido por regra");
+        if (var_lstWeaponFilters.length) {
+          var_lstAllowed = var_lstWeapons
+            .filter((item) => var_lstWeaponFilters.every((key) => (item.keywords ?? []).includes(key)))
+            .map((item) => item.name);
+          if (var_lstAllowed.length === 0) {
+            var_boolInactive = true;
+            var_lstReasons.push("Avançou — sem ASSAULT");
+          }
         }
       }
     }
@@ -111,28 +149,13 @@ export function evaluateUnit(input: {
       var_boolInactive = true;
       var_lstReasons.push("Recuou");
       var_lstAllowed = [];
-    } else if (input.unit.moved === "fell_back") var_lstReasons.push("Permitido por regra");
+    } else if (input.unit.moved === "fell_back" && var_fnPermitted("shoot_after_fall_back")) {
+      var_lstReasons.push("Permitido por regra");
+    }
     if (input.unit.on_action && !var_fnPermitted("shoot_on_action")) {
       var_boolInactive = true;
       var_lstReasons.push("Em ação");
       var_lstAllowed = [];
-    }
-    const var_boolMonsterVehicle = (input.unitKeywords ?? []).some(
-      (item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE",
-    );
-    if (input.unit.engaged && !var_boolMonsterVehicle && !var_fnPermitted("shoot_engaged")) {
-      const var_lstClose = var_lstWeapons
-        .filter((item) => isCloseQuarters(item))
-        .filter((item) => !keywordsOf(item).includes(con_strBlast))
-        .map((item) => item.name);
-      if (var_lstClose.length === 0) {
-        var_boolInactive = true;
-        var_lstReasons.push("Em combate");
-        var_lstAllowed = [];
-      } else {
-        var_lstAllowed = var_lstClose;
-        var_lstReasons.push("Só CLOSE-QUARTERS / PISTOL (sem BLAST); -1 para acertar");
-      }
     }
   }
   if (input.phase === "charge") {

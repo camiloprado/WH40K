@@ -40,7 +40,9 @@ describe("elegibilidade", () => {
 
   it("recuo bloqueia tiro e carga, allow libera", () => {
     const fell = base({ moved: "fell_back" });
-    expect(evaluateUnit({ phase: "shooting", unit: fell, weapons: [{ name: "Rifle", kind: "ranged" }] }).status).toBe("inactive");
+    expect(evaluateUnit({ phase: "shooting", unit: fell, weapons: [{ name: "Rifle", kind: "ranged" }] }).status).toBe(
+      "inactive",
+    );
     expect(evaluateUnit({ phase: "charge", unit: fell }).status).toBe("inactive");
     const allowed = evaluateUnit({
       phase: "shooting",
@@ -80,11 +82,12 @@ describe("elegibilidade", () => {
       weapons: [
         { name: "Garras", kind: "melee" },
         { name: "Lash", kind: "ranged", keywords: ["pistol"] },
+        { name: "Rifle", kind: "ranged" },
       ],
     });
     expect(pistol.status).toBe("active");
     expect(pistol.allowedWeapons).toEqual(["Lash"]);
-    expect(pistol.reasons.some((item) => item.includes("CLOSE-QUARTERS"))).toBe(true);
+    expect(pistol.reasons.some((item) => item.includes("−1") || item.includes("-1"))).toBe(false);
     const close = evaluateUnit({
       phase: "shooting",
       unit: engaged,
@@ -98,6 +101,43 @@ describe("elegibilidade", () => {
       weapons: [{ name: "Grenade", kind: "ranged", keywords: ["PISTOL", "BLAST"] }],
     });
     expect(blast.status).toBe("inactive");
+  });
+
+  it("MONSTER/VEHICLE engajado mantém armas e avisa −1 e BLAST", () => {
+    const result = evaluateUnit({
+      phase: "shooting",
+      unit: base({ engaged: true }),
+      unitKeywords: ["VEHICLE"],
+      weapons: [
+        { name: "Cannon", kind: "ranged", keywords: ["BLAST"] },
+        { name: "Gun", kind: "ranged" },
+        { name: "Flamer", kind: "ranged", keywords: ["CLOSE-QUARTERS"] },
+      ],
+    });
+    expect(result.status).toBe("active");
+    expect(result.allowedWeapons).toEqual(["Cannon", "Gun", "Flamer"]);
+    expect(result.reasons.some((item) => item.includes("−1"))).toBe(true);
+    expect(result.reasons.some((item) => item.includes("BLAST"))).toBe(true);
+  });
+
+  it("engajada e avançou não atira", () => {
+    const result = evaluateUnit({
+      phase: "shooting",
+      unit: base({ engaged: true, moved: "advanced" }),
+      weapons: [
+        { name: "Lash", kind: "ranged", keywords: ["PISTOL"] },
+        { name: "Claws", kind: "ranged", keywords: ["ASSAULT"] },
+      ],
+    });
+    expect(result.status).toBe("inactive");
+    expect(result.allowedWeapons).toEqual([]);
+    expect(result.reasons).toContain("Engajada e avançou — sem tiro");
+    const freed = evaluateUnit({
+      phase: "shooting",
+      unit: base({ engaged: true, moved: "advanced", overrides: [{ key: "shoot_engaged" }] }),
+      weapons: [{ name: "Lash", kind: "ranged", keywords: ["PISTOL"] }],
+    });
+    expect(freed.status).not.toBe("inactive");
   });
 
   it("unidade sem arma de tiro já conta como tendo atirado", () => {
