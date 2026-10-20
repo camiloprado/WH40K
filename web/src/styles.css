@@ -17,6 +17,16 @@
   --charge: #b85cd6;
   --fight: #c0392b;
   --end_of_turn: #a3acb0;
+  --end_of_round: #7f8c8d;
+  --on-round_start: #fff;
+  --on-command: #111;
+  --on-battle_shock: #fff;
+  --on-movement: #111;
+  --on-shooting: #111;
+  --on-charge: #111;
+  --on-fight: #fff;
+  --on-end_of_turn: #111;
+  --on-end_of_round: #fff;
   --phase: var(--accent);
   --nav-h: 48px;
   color-scheme: dark;
@@ -158,7 +168,7 @@ table.units td.num { text-align: right; }
 .phase-step.on { color: var(--text); background: color-mix(in srgb, var(--c) 18%, transparent); border-color: color-mix(in srgb, var(--c) 60%, transparent); font-weight: 600; }
 .phase-step.on .dot { opacity: 1; box-shadow: 0 0 10px var(--c); }
 .phase-step.past { text-decoration: line-through; }
-.phase-rail .next { margin-top: auto; min-height: 52px; background: var(--phase); color: #111; }
+.phase-rail .next { margin-top: auto; min-height: 52px; background: var(--phase); color: var(--on-phase, #fff); }
 
 .board { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px; min-height: 0; overflow: hidden; }
 .board-scroll { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 10px; }
@@ -214,9 +224,9 @@ table.units td.num { text-align: right; }
 .unit-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--accent); }
 .unit-card.pending { border-color: var(--phase); box-shadow: 0 0 0 1px var(--phase), 0 0 14px color-mix(in srgb, var(--phase) 35%, transparent); }
 .unit-card.warn { border-color: var(--warn); }
-.unit-card.inactive { background: #12141a; border-style: dashed; filter: grayscale(0.4); }
-.unit-card.inactive .card-reason { color: #ffb3b3; }
-.unit-card.tapped { transform: rotate(90deg) scale(0.74); opacity: 0.75; }
+.unit-card.inactive { background: #12141a; border-style: dashed; filter: grayscale(0.35); }
+.unit-card.inactive .card-reason { color: #ffc9c9; font-size: 12px; }
+.unit-card.tapped { transform: rotate(90deg) scale(0.74); }
 .unit-card.selected { outline: 2px solid #fff; outline-offset: 2px; }
 .unit-card.destroyed { filter: grayscale(1); opacity: 0.55; }
 .card-cell.compact .unit-card { width: 150px; height: auto; min-height: 44px; transform: none; }
@@ -289,6 +299,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
 .context-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
 .menu-title { margin: 4px 8px 6px; font-size: 12px; color: var(--muted); }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; background: #232833; border: 1px solid #3a4150; padding: 6px 6px 6px 14px; border-radius: 10px; z-index: 45; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
+.sheet-confirm { position: fixed; left: 12px; right: 12px; bottom: 20px; z-index: 40; background: #1a1e28; border: 1px solid var(--line); padding: 16px; border-radius: 8px; max-height: 70vh; overflow: auto; }
 
 @media (max-width: 1200px) {
   .table-app { grid-template-columns: 132px minmax(0, 1fr) 290px; }
@@ -312,7 +323,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .phase-rail .phase-menu summary { list-style: none; min-height: 48px; padding: 8px 12px; cursor: pointer; }
   .phase-rail .phase-menu[open] .phase-step { display: block; width: 100%; text-align: left; }
   .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; }
-  .sheet-confirm { position: fixed; left: 12px; right: 12px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 40; background: #1a1e28; border: 1px solid var(--line); padding: 16px; border-radius: 8px; }
+  .sheet-confirm { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   .turn-tag { display: none; }
   .phase-step { flex: none; font-size: 12px; padding: 0 8px; }
   .phase-step .dot { display: none; }
@@ -327,7 +338,9 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .unit-card { width: 100%; height: 112px; }
   .topnav .brand { white-space: nowrap; font-size: 14px; }
   .player-bar { padding: 6px 8px; }
-  .unit-card.tapped { transform: none; opacity: 0.6; }
+  .unit-card.tapped { transform: none; }
+  .counter .step, .zone-head button, .pip, .chip, .ghost, .player-extra button { min-height: 48px; min-width: 48px; }
+  .counter { gap: 8px; }
   .counter-value { font-size: 18px; min-width: 52px; }
   .player-name { min-width: 0; }
   .side { border-left: 0; overflow: visible; background: transparent; }

@@ -38,6 +38,47 @@ def test_shadow_event_fixture_and_server():
     assert last["opp_dz_in_shadow"] is fixture["expect"]["last_opp"]
 
 
+def _load_events(name: str) -> tuple[list[dict], dict]:
+    fixture = json.loads((ROOT / "fixtures" / "events" / name).read_text(encoding="utf-8-sig"))
+    events = [
+        {
+            "id": f"00000000-0000-4000-8000-{item['seq']:012d}",
+            "seq": item["seq"],
+            "device_id": "parity",
+            "type": item["type"],
+            "payload": item["payload"],
+            "created_at": item["created_at"],
+        }
+        for item in fixture["events"]
+    ]
+    return events, fixture["expect"]
+
+
+def test_c10_event_fixture():
+    events, expect = _load_events("c10_blank_turn.json")
+    state = apply_events(events)
+    assert state["player"] == expect["player"]
+    assert state["phase"] == expect["phase"]
+    assert state["live"][1]["fought"] is expect["fought"]
+    assert state["live"][1]["engaged"] is expect["engaged"]
+
+
+def test_c12_event_fixture():
+    events, expect = _load_events("c12_per_turn.json")
+    state = apply_events(events)
+    assert len(state["stratagem_uses"]) == expect["uses"]
+    assert state["cp"]["me"] == expect["cp_me"]
+    assert expect["no_warning"] not in state["warnings"]
+
+
+def test_c17_event_fixture():
+    events, expect = _load_events("c17_phases_v2.json")
+    state = apply_events(events)
+    assert state["phase"] == expect["phase"]
+    assert state["round"] == expect["round"]
+    assert state["player"] == expect["player"]
+
+
 def test_shadow_phased_projection():
     events = [
         {

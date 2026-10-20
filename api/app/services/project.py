@@ -20,7 +20,7 @@ con_setPatchFields = {
     "lane",
 }
 con_setLanes = {"left", "center", "right", "home"}
-con_setChoiceScopes = {"turn", "round", "battle"}
+con_setChoiceScopes = {"turn", "round", "battle", "until_own_command"}
 
 PHASES = con_lstPhases
 PATCH_FIELDS = con_setPatchFields
@@ -88,6 +88,8 @@ def _empty() -> dict:
         "choices": [],
         "warnings": [],
         "event_rules": False,
+        "phases_v": 1,
+        "checklist": [],
         "started": False,
     }
 
@@ -164,6 +166,7 @@ def _apply(state: dict, event: dict) -> None:
         state["cp"]["opponent"] = int(payload.get("cp_opponent") or 0)
         state["attachments"] = payload.get("attachments") or []
         state["event_rules"] = bool(payload.get("event_rules"))
+        state["phases_v"] = int(payload.get("phases_v") or 1)
         for unit in payload.get("units") or []:
             state["live"][int(unit["list_unit_id"])] = _blank(
                 unit["list_unit_id"], unit.get("name") or "", 1, None
@@ -177,26 +180,51 @@ def _apply(state: dict, event: dict) -> None:
         if "event_rules" in payload:
             state["event_rules"] = bool(payload.get("event_rules"))
         return
+    if kind == "checklist_set":
+        key = str(payload.get("key") or "")
+        player = payload.get("player") or state["player"]
+        state["checklist"] = [
+            item
+            for item in state["checklist"]
+            if not (item["round"] == state["round"] and item["player"] == player and item["key"] == key)
+        ]
+        state["checklist"].append(
+            {"round": state["round"], "player": player, "key": key, "done": bool(payload.get("done"))}
+        )
+        return
     if kind == "phase_advanced":
-        index = PHASES.index(state["phase"])
-        entered_my_command = False
-        if index < len(PHASES) - 1:
-            state["phase"] = PHASES[index + 1]
+        turned_over = False
+        if state["phase"] == "end_of_round":
+            state["round"] = min(10, state["round"] + 1)
+            state["player"] = state["first_player"]
+            state["phase"] = "round_start"
+            turned_over = True
         else:
-            other = "opponent" if state["player"] == "me" else "me"
-            if state["player"] != state["first_player"]:
-                state["round"] = min(10, state["round"] + 1)
-                state["player"] = state["first_player"]
-                state["phase"] = "round_start"
+            index = PHASES.index(state["phase"])
+            if index < len(PHASES) - 1:
+                state["phase"] = PHASES[index + 1]
             else:
-                state["player"] = other
-                state["phase"] = "command"
-            entered_my_command = state["player"] == "me"
-        if entered_my_command:
+                other = "opponent" if state["player"] == "me" else "me"
+                if state["player"] != state["first_player"]:
+                    if state.get("phases_v", 1) >= 2:
+                        state["phase"] = "end_of_round"
+                    else:
+                        state["round"] = min(10, state["round"] + 1)
+                        state["player"] = state["first_player"]
+                        state["phase"] = "round_start"
+                        turned_over = True
+                else:
+                    state["player"] = other
+                    state["phase"] = "command"
+                    turned_over = True
+        if turned_over:
             _roll(state)
         if state["phase"] == "fight":
             for unit in state["live"].values():
                 unit["engaged_at_fight_start"] = bool(unit["engaged"])
+        if state["phase"] == "end_of_round" and state["round"] >= 3:
+            if any(unit.get("in_reserves") and not unit.get("destroyed") for unit in state["live"].values()):
+                state["warnings"].append("reserves_destroyed")
         _open_turn(state, event)
         return
     if kind == "unit_state_set":
@@ -379,6 +407,8 @@ def _same_choice(left: dict, right: dict) -> bool:
         return True
     if right["scope"] == "round":
         return left["round"] == right["round"]
+    if right["scope"] == "until_own_command":
+        return left["round"] == right["round"] and left["player"] == right["player"]
     return left["round"] == right["round"] and left["player"] == right["player"]
 
 
@@ -426,7 +456,10 @@ def _limit_hit(state: dict, name: str, player: str, limit: str) -> bool:
     if limit == "per_round":
         return any(item["round"] == state["round"] for item in rows)
     if limit == "per_turn":
-        return any(item["round"] == state["round"] for item in rows)
+        return any(
+            item["round"] == state["round"] and item.get("turn_player") == state["player"]
+            for item in rows
+        )
     if limit == "per_phase":
         return any(
             item["round"] == state["round"] and item["phase"] == state["phase"] for item in rows
@@ -437,7 +470,7 @@ def _limit_hit(state: dict, name: str, player: str, limit: str) -> bool:
 def _stratagem(state: dict, event: dict) -> None:
     payload = event["payload"]
     name = payload.get("stratagem_name") or "Stratagem"
-    player = payload.get("player") or state["player"]
+    player = "opponent" if payload.get("player") == "opponent" else "me"
     limit = payload.get("use_limit") or "per_phase"
     if _limit_hit(state, name, player, "per_phase") and not payload.get("limit_overridden"):
         state["warnings"].append("stratagem_limit")
@@ -480,6 +513,7 @@ def _stratagem(state: dict, event: dict) -> None:
             "stratagem_name": name,
             "round": state["round"],
             "player": player,
+            "turn_player": state["player"],
             "phase": state["phase"],
             "cp_spent": spent if state["cp"][player] is not None else 0,
             "target_list_unit_id": target_id,

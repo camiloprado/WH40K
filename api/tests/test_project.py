@@ -178,6 +178,79 @@ def test_core_cp_and_event_rules():
     assert "core_cp_twice" in state["warnings"]
 
 
+def test_c17_phases_v2_end_of_round():
+    events = [
+        {
+            **started(),
+            "payload": {**started()["payload"], "phases_v": 2},
+        }
+    ]
+    seq = 2
+    state = apply_events(events)
+    while not (state["player"] == "opponent" and state["phase"] == "end_of_turn") and seq < 40:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    events.append(ev(seq, "phase_advanced", {}, "2026-10-15T12:01:00Z"))
+    state = apply_events(events)
+    assert state["phase"] == "end_of_round"
+    assert state["round"] == 1
+    events.append(ev(seq + 1, "phase_advanced", {}, "2026-10-15T12:01:01Z"))
+    state = apply_events(events)
+    assert state["phase"] == "round_start"
+    assert state["round"] == 2
+
+
+def test_c10_blank_on_every_turn_switch():
+    events = [
+        started(),
+        ev(2, "unit_state_set", {"list_unit_id": 1, "patch": {"engaged": True, "fought": True}}, "2026-10-15T12:00:01Z"),
+    ]
+    seq = 3
+    state = apply_events(events)
+    while not (state["player"] == "opponent" and state["phase"] == "fight") and seq < 40:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    assert state["player"] == "opponent"
+    assert state["phase"] == "fight"
+    assert state["live"][1]["fought"] is False
+    assert state["live"][1]["engaged"] is True
+
+
+def test_c12_per_turn_across_turns():
+    events = [
+        {
+            **started(),
+            "payload": {**started()["payload"], "cp_me": 3},
+        },
+        ev(
+            2,
+            "stratagem_used",
+            {"stratagem_name": "Fire Overwatch", "cp_spent": 1, "use_limit": "per_turn", "player": "me"},
+            "2026-10-15T12:00:01Z",
+        ),
+    ]
+    seq = 3
+    state = apply_events(events)
+    while not (state["player"] == "opponent" and state["phase"] == "command") and seq < 30:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    events.append(
+        ev(
+            seq,
+            "stratagem_used",
+            {"stratagem_name": "Fire Overwatch", "cp_spent": 1, "use_limit": "per_turn", "player": "me"},
+            "2026-10-15T12:01:00Z",
+        )
+    )
+    state = apply_events(events)
+    assert "stratagem_limit" not in state["warnings"]
+    assert len(state["stratagem_uses"]) == 2
+    assert state["cp"]["me"] == 1
+
+
 def test_second_turn_skips_round_start():
     events = [started()]
     seq = 2

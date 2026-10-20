@@ -31,6 +31,7 @@ def upgrade() -> None:
           ALTER COLUMN turn_player SET DEFAULT 'me';
         ALTER TABLE faction_round_states DROP CONSTRAINT IF EXISTS faction_round_states_game_id_round_player_state_key_key;
         ALTER TABLE faction_round_states DROP CONSTRAINT IF EXISTS uq_faction_round_states_key;
+        DROP INDEX IF EXISTS faction_round_states_game_id_round_player_state_key_key;
         CREATE UNIQUE INDEX IF NOT EXISTS uq_faction_round_states_phase
           ON faction_round_states (game_id, round, turn_player, phase, state_key);
         """

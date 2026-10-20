@@ -178,6 +178,39 @@ describe("elegibilidade", () => {
     expect(opp.status).toBe("active");
   });
 
+  it("C11 turno do oponente inativa MOV/SHT/CHG salvo overwatch", () => {
+    for (const phase of ["movement", "shooting", "charge"] as const) {
+      const blocked = evaluateUnit({
+        phase,
+        unit: base({ engaged: phase === "charge" ? false : true }),
+        weapons: [{ name: "Rifle", kind: "ranged" }],
+        activePlayer: "opponent",
+      });
+      expect(blocked.status).toBe("inactive");
+      expect(blocked.reasons).toContain("Turno do oponente");
+    }
+    const overwatch = evaluateUnit({
+      phase: "shooting",
+      unit: base({ overrides: [{ key: "overwatch" }] }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      activePlayer: "opponent",
+    });
+    expect(overwatch.status).not.toBe("inactive");
+    expect(
+      evaluateUnit({
+        phase: "fight",
+        unit: base({ engaged: true }),
+        activePlayer: "opponent",
+      }).status,
+    ).toBe("active");
+  });
+
+  it("C16 engajada na Movement avisa fica parada ou recua", () => {
+    const engaged = evaluateUnit({ phase: "movement", unit: base({ engaged: true }) });
+    expect(engaged.reasons).toContain("Engajada: fica parada ou recua");
+    expect(evaluateUnit({ phase: "movement", unit: base() }).reasons).not.toContain("Engajada: fica parada ou recua");
+  });
+
   it("Desperate Escape quando engajada e em battle-shock na Movement", () => {
     const result = evaluateUnit({
       phase: "movement",

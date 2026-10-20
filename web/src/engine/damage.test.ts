@@ -69,4 +69,10 @@ describe("dano esperado", () => {
     // 2 × 5/6 × 3/6 × 3/6 × 1 = 2 × 5/6 × 1/4 = 10/24
     expect(raw).toBeCloseTo(10 / 24, 5);
   });
+
+  it("B1 Torrent auto-hit aumenta o dano médio", () => {
+    const base = expectedDamage({ ...baseWeapon, skill: 4, damage: "1" }, baseTarget)!;
+    const torrent = expectedDamage({ ...baseWeapon, skill: 4, damage: "1", keywords: ["TORRENT"] }, baseTarget)!;
+    expect(torrent).toBeGreaterThan(base);
+  });
 });

@@ -20,6 +20,13 @@ export type TargetProfile = {
   models?: number;
 };
 
+export type DamageToggles = {
+  sustained?: number;
+  lethal?: boolean;
+  twinLinked?: boolean;
+  torrent?: boolean;
+};
+
 export function diceAverage(expr: string | null | undefined): number {
   const var_lstFaces = damageFaces(expr);
   if (!var_lstFaces) return 0;
@@ -39,7 +46,6 @@ export function damageFaces(expr: string | null | undefined): [number, number][]
       const var_fltP = 1 / var_intFaces;
       return Array.from({ length: var_intFaces }, (_, i) => [i + 1 + var_intBonus, var_fltP] as [number, number]);
     }
-    // 2D6 etc.: convolução simples
     let var_lstDist: Map<number, number> = new Map([[0, 1]]);
     for (let n = 0; n < var_intCount; n += 1) {
       const next = new Map<number, number>();
@@ -85,18 +91,50 @@ function woundChance(strength: number, toughness: number): number {
   return 2 / 6;
 }
 
+function keywordFlags(weapon: WeaponProfile, toggles?: DamageToggles) {
+  const keys = (weapon.keywords || []).map((item) => item.toUpperCase());
+  const sustainedMatch = keys.find((item) => item.startsWith("SUSTAINED"));
+  const sustainedFromKw = sustainedMatch ? Number(sustainedMatch.replace(/[^\d]/g, "") || 1) : 0;
+  return {
+    sustained: toggles?.sustained ?? sustainedFromKw,
+    lethal: toggles?.lethal ?? keys.some((item) => item.includes("LETHAL")),
+    twinLinked: toggles?.twinLinked ?? keys.some((item) => item.includes("TWIN")),
+    torrent: toggles?.torrent ?? keys.some((item) => item.includes("TORRENT")),
+  };
+}
+
 /**
  * Média por ataque com FNP e teto W exatos por face; multiplica pelo count; teto models×W.
- * Arredondamento fica na UI. Perfil incompleto → null.
+ * Keywords: Torrent (auto-hit), Lethal Hits, Sustained Hits N, Twin-linked (rerroll wound).
  */
-export function expectedDamage(weapon: WeaponProfile, target: TargetProfile): number | null {
+export function expectedDamage(
+  weapon: WeaponProfile,
+  target: TargetProfile,
+  toggles?: DamageToggles,
+): number | null {
   const var_lstAttacks = damageFaces(weapon.attacks);
   const var_lstDamage = damageFaces(weapon.damage);
   if (!var_lstAttacks || !var_lstDamage || weapon.strength == null) return null;
+  const flags = keywordFlags(weapon, toggles);
   const var_fltAttacks = var_lstAttacks.reduce((sum, [d, p]) => sum + d * p, 0);
   const var_intSkill = weapon.skill ?? 4;
-  const var_fltHit = Math.min(5 / 6, Math.max(0, (7 - var_intSkill) / 6));
-  const var_fltWound = woundChance(weapon.strength, target.toughness);
+  let var_fltHit = flags.torrent ? 1 : Math.min(5 / 6, Math.max(0, (7 - var_intSkill) / 6));
+  let var_fltWound = woundChance(weapon.strength, target.toughness);
+  if (flags.twinLinked) {
+    var_fltWound = var_fltWound + (1 - var_fltWound) * var_fltWound;
+  }
+  // Lethal: hits críticos (6) viram feridas automáticas — aproxima fracção 1/6 dos hits.
+  const var_fltCrit = flags.torrent ? 0 : 1 / 6;
+  const var_fltNormalHit = Math.max(0, var_fltHit - (flags.lethal ? var_fltCrit : 0));
+  const var_fltAutoWound = flags.lethal ? var_fltCrit : 0;
+  // Sustained: cada hit crítico gera +N hits extras (média).
+  const var_fltExtraHits = flags.sustained > 0 ? var_fltCrit * flags.sustained : 0;
+  const var_fltHitEff = var_fltHit + var_fltExtraHits;
+  const var_fltWoundPass =
+    flags.lethal
+      ? (var_fltNormalHit / Math.max(var_fltHit, 1e-9)) * var_fltWound * var_fltHitEff +
+        var_fltAutoWound * (var_fltHitEff / Math.max(var_fltHit, 1e-9))
+      : var_fltHitEff * var_fltWound;
   const var_intNeeded = target.save - (weapon.ap ?? 0);
   let var_fltSaveFail = var_intNeeded > 6 ? 1 : Math.max(0, 1 - (7 - Math.max(var_intNeeded, 2)) / 6);
   if (target.invuln) {
@@ -107,7 +145,7 @@ export function expectedDamage(weapon: WeaponProfile, target: TargetProfile): nu
   const var_intWounds = Math.max(1, target.wounds || 1);
   const var_fltPerAttack = var_lstDamage.reduce((sum, [d, p]) => sum + p * keptCapped(d, var_intWounds, var_fltKeep), 0);
   const var_intShooters = Math.max(1, weapon.count ?? 1);
-  const var_fltRaw = var_intShooters * var_fltAttacks * var_fltHit * var_fltWound * var_fltSaveFail * var_fltPerAttack;
+  const var_fltRaw = var_intShooters * var_fltAttacks * var_fltWoundPass * var_fltSaveFail * var_fltPerAttack;
   const var_fltCap = (target.models ?? 1) * var_intWounds;
   return Math.min(var_fltRaw, var_fltCap);
 }

@@ -56,17 +56,28 @@ export type GameFacts = {
 export function canStartAction(
   unit: UnitSnapshot,
   unitKeywords?: string[],
+  opts?: { oc?: number | null | string; snapShooting?: boolean },
 ): string[] {
   const var_lstReasons: string[] = [];
+  const var_setOverrides = new Set((unit.overrides ?? []).map((item) => item.key));
   const var_boolTitanic = (unitKeywords ?? []).some((item) => item.toUpperCase() === "TITANIC");
   if (unit.destroyed || unit.in_reserves) var_lstReasons.push("Fora do tabuleiro: não começa ação");
   if ((unitKeywords ?? []).some((item) => ["AIRCRAFT", "FORTIFICATION"].includes(item.toUpperCase()))) {
     var_lstReasons.push("AIRCRAFT/FORTIFICATION: não começa ação");
   }
   if (unit.battle_shocked) var_lstReasons.push("Em battle-shock: não começa ação");
+  const var_mixOc = opts?.oc;
+  if (var_mixOc === 0 || var_mixOc === "–" || var_mixOc === "-" || var_mixOc === null) {
+    var_lstReasons.push("OC 0/–: não começa ação");
+  }
   if (unit.engaged && !var_boolTitanic) var_lstReasons.push("Engajada: não começa ação");
-  if (unit.moved === "advanced") var_lstReasons.push("Avançou: não começa ação neste turno");
-  if (unit.moved === "fell_back") var_lstReasons.push("Recuou: não começa ação neste turno");
+  if (unit.moved === "advanced" && !var_setOverrides.has("action_after_advance")) {
+    var_lstReasons.push("Avançou: não começa ação neste turno");
+  }
+  if (unit.moved === "fell_back" && !var_setOverrides.has("action_after_fall_back")) {
+    var_lstReasons.push("Recuou: não começa ação neste turno");
+  }
+  if (opts?.snapShooting) var_lstReasons.push("Fez snap shooting: não começa ação nesta fase");
   if (unit.on_action) var_lstReasons.push("Já começou outra ação neste turno");
   return var_lstReasons;
 }
@@ -78,6 +89,7 @@ export function evaluateUnit(input: {
   unitKeywords?: string[];
   effects?: RuleEffect[];
   game?: GameFacts;
+  activePlayer?: "me" | "opponent";
 }): Eligibility {
   const var_lstWeapons = input.weapons ?? [];
   const var_lstNames = var_lstWeapons.map((item) => item.name);
@@ -100,6 +112,21 @@ export function evaluateUnit(input: {
   if (input.unit.destroyed || var_setDenies.has("destroyed")) {
     return { status: "inactive", reasons: ["Destruída"], allowedWeapons: [], destroyed: true };
   }
+  const var_strActive = input.activePlayer ?? "me";
+  const var_setReactive = new Set(["overwatch", "heroic_intervention", "rapid_ingress", "reactive_move"]);
+  const var_boolReactive = [...var_setReactive].some((key) => var_fnPermitted(key));
+  if (
+    var_strActive === "opponent" &&
+    (input.phase === "movement" || input.phase === "shooting" || input.phase === "charge") &&
+    !var_boolReactive
+  ) {
+    return {
+      status: "inactive",
+      reasons: ["Turno do oponente"],
+      allowedWeapons: [],
+      destroyed: false,
+    };
+  }
   if (input.phase === "shooting" && !hasRanged(var_lstWeapons)) {
     return { status: "done", reasons: ["Sem arma de tiro"], allowedWeapons: [], destroyed: false };
   }
@@ -110,6 +137,9 @@ export function evaluateUnit(input: {
   const var_lstReasons: string[] = [];
   let var_lstAllowed = var_lstNames;
   let var_boolInactive = false;
+  if (var_boolReactive && var_strActive === "opponent") {
+    var_lstReasons.push("Permitido por regra no turno do oponente");
+  }
   if (input.phase === "shooting") {
     const var_boolMonsterVehicle = (input.unitKeywords ?? []).some(
       (item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE",
@@ -180,13 +210,20 @@ export function evaluateUnit(input: {
     } else if (input.unit.moved === "fell_back" && var_fnPermitted("shoot_after_fall_back")) {
       var_lstReasons.push("Permitido por regra");
     }
-    if (input.unit.on_action && !var_fnPermitted("shoot_on_action")) {
+    if (
+      input.unit.on_action &&
+      !var_fnPermitted("shoot_on_action") &&
+      !(input.unitKeywords ?? []).some((item) => item.toUpperCase() === "TITANIC")
+    ) {
       var_boolInactive = true;
       var_lstReasons.push("Em ação");
       var_lstAllowed = [];
     }
   }
   if (input.phase === "movement") {
+    if (input.unit.engaged && input.unit.moved === "none") {
+      var_lstReasons.push("Engajada: fica parada ou recua");
+    }
     if (input.unit.engaged && input.unit.battle_shocked && input.unit.moved === "none") {
       var_lstReasons.push(
         "Em battle-shock: se recuar, só Desperate Escape — hazard roll por modelo (1–2 = mortal wound)",

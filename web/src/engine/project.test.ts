@@ -144,6 +144,93 @@ it("Shadow por fase e legado whole_board", () => {
   expect(shadowNow(phased).nml).toBe(true);
 });
 
+it("C17 phases_v2: end_of_round antes da R2", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", phases_v: 2, units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+  ];
+  let seq = 2;
+  let state = applyEvents(events);
+  while (!(state.player === "opponent" && state.phase === "end_of_turn") && seq < 40) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  events.push(ev(seq, "phase_advanced", {}, "2026-10-15T12:01:00Z"));
+  state = applyEvents(events);
+  expect(state.phase).toBe("end_of_round");
+  expect(state.round).toBe(1);
+  events.push(ev(seq + 1, "phase_advanced", {}, "2026-10-15T12:01:01Z"));
+  state = applyEvents(events);
+  expect(state.phase).toBe("round_start");
+  expect(state.round).toBe(2);
+  expect(state.player).toBe("me");
+});
+
+it("C17 phases_v1: sem end_of_round (byte-compat)", () => {
+  const events = [ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z")];
+  let seq = 2;
+  let state = applyEvents(events);
+  while (!(state.player === "opponent" && state.phase === "end_of_turn") && seq < 40) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  events.push(ev(seq, "phase_advanced", {}, "2026-10-15T12:01:00Z"));
+  state = applyEvents(events);
+  expect(state.phase).toBe("round_start");
+  expect(state.round).toBe(2);
+  expect(state.phasesV).toBe(1);
+});
+
+it("C10 zera fought ao trocar para o turno do oponente", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+    ev(2, "unit_state_set", { list_unit_id: 1, patch: { engaged: true, fought: true } }, "2026-10-15T12:00:01Z"),
+  ];
+  let seq = 3;
+  let state = applyEvents(events);
+  while (!(state.player === "opponent" && state.phase === "fight") && seq < 40) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  expect(state.player).toBe("opponent");
+  expect(state.phase).toBe("fight");
+  expect(state.live[1].fought).toBe(false);
+  expect(state.live[1].engaged).toBe(true);
+});
+
+it("C12 per_turn não avisa entre turnos da mesma rodada", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", cp_me: 3, units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+    ev(
+      2,
+      "stratagem_used",
+      { stratagem_name: "Fire Overwatch", cp_spent: 1, use_limit: "per_turn", player: "me" },
+      "2026-10-15T12:00:01Z",
+    ),
+  ];
+  let seq = 3;
+  let state = applyEvents(events);
+  while (!(state.player === "opponent" && state.phase === "command") && seq < 30) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  events.push(
+    ev(
+      seq,
+      "stratagem_used",
+      { stratagem_name: "Fire Overwatch", cp_spent: 1, use_limit: "per_turn", player: "me" },
+      "2026-10-15T12:01:00Z",
+    ),
+  );
+  state = applyEvents(events);
+  expect(state.warnings).not.toContain("stratagem_limit");
+  expect(state.stratagem_uses).toHaveLength(2);
+  expect(state.cp.me).toBe(1);
+});
+
 it("guarda a faixa entre turnos e troca a escolha do efeito no mesmo turno", () => {
   const events = [
     ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "Lion" }] }, "2026-10-15T12:00:00Z"),

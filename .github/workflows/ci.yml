@@ -39,6 +39,8 @@ jobs:
           python -m alembic upgrade head
           python -m alembic downgrade base
           python -m alembic upgrade head
+          python -m alembic downgrade 0012_game_result
+          python -m alembic upgrade head
         env:
           DATABASE_URL: postgresql+psycopg://wh40k:wh40k@127.0.0.1:15432/wh40k
       - run: python -m pytest -q

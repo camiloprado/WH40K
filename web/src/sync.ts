@@ -1,9 +1,53 @@
 import { api } from "./api";
 import { db, deviceId, type EventRecord, type GameRecord } from "./db";
 
+export type SyncChip = "offline" | "server_down" | "syncing" | "ok" | "rejected";
+
+let var_intRejected = 0;
+let var_boolServerDown = false;
+let var_intBackoffMs = 30_000;
+let var_intTimer: number | null = null;
+const var_lstListeners = new Set<() => void>();
+
+function notify() {
+  for (const fn of var_lstListeners) fn();
+}
+
+export function syncRejectedCount() {
+  return var_intRejected;
+}
+
+export function syncServerDown() {
+  return var_boolServerDown;
+}
+
+export function onSyncStatus(fn: () => void) {
+  var_lstListeners.add(fn);
+  return () => var_lstListeners.delete(fn);
+}
+
+function scheduleRetry() {
+  if (var_intTimer != null) return;
+  var_intTimer = window.setTimeout(() => {
+    var_intTimer = null;
+    void flushSync();
+  }, var_intBackoffMs);
+  var_intBackoffMs = Math.min(300_000, Math.floor(var_intBackoffMs * 1.5));
+}
+
 export async function flushSync() {
-  if (!navigator.onLine) return;
+  if (!navigator.onLine) {
+    var_boolServerDown = false;
+    notify();
+    return;
+  }
   const var_lstQueued = await db.sync_queue.toArray();
+  if (!var_lstQueued.length) {
+    var_boolServerDown = false;
+    var_intBackoffMs = 30_000;
+    notify();
+    return;
+  }
   const var_dctByGame = new Map<string, EventRecord[]>();
   for (const var_objItem of var_lstQueued) {
     const var_lstEvents = var_dctByGame.get(var_objItem.game_id) ?? [];
@@ -15,7 +59,11 @@ export async function flushSync() {
     if (!var_objGame) continue;
     try {
       await api("/games", { method: "POST", body: JSON.stringify(gameBody(var_objGame)) });
-      const var_objResult = await api<{ accepted: string[]; duplicates: string[] }>("/games/sync", {
+      const var_objResult = await api<{
+        accepted: string[];
+        duplicates: string[];
+        rejected?: { id: string; reason: string }[];
+      }>("/games/sync", {
         method: "POST",
         body: JSON.stringify({
           game_id: var_strGameId,
@@ -31,15 +79,33 @@ export async function flushSync() {
         }),
       });
       const var_setDone = new Set([...(var_objResult.accepted || []), ...(var_objResult.duplicates || [])]);
+      var_intRejected = (var_objResult.rejected || []).length;
       await db.sync_queue
         .where("game_id")
         .equals(var_strGameId)
         .filter((item) => var_setDone.has(item.event.id))
         .delete();
+      var_boolServerDown = false;
+      var_intBackoffMs = 30_000;
+      notify();
     } catch {
+      var_boolServerDown = true;
+      notify();
+      scheduleRetry();
       return;
     }
   }
+  const var_intLeft = await db.sync_queue.count();
+  if (var_intLeft) scheduleRetry();
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    void flushSync();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") void flushSync();
+  });
 }
 
 export async function finishMatch(game: { id: string }, result: "win" | "loss" | "draw", listName: string) {

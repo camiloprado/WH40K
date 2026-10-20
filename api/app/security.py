@@ -65,7 +65,7 @@ def login(db: Session, token: str, user_agent: str | None, client: str) -> str:
             token_hash=hashlib.sha256(var_strRaw.encode()).hexdigest(),
             user_agent=(user_agent or "")[:300] or None,
             last_seen_at=var_objNow,
-            expires_at=var_objNow + timedelta(days=90),
+            expires_at=var_objNow + timedelta(days=30),
         )
     )
     db.flush()
@@ -96,7 +96,7 @@ def require_session(request: Request, db: Session) -> SessionRow:
     if var_objExpires < var_objNow:
         err(401, "session_expired", "Sessão expirada")
     var_objRow.last_seen_at = var_objNow
-    var_objRow.expires_at = var_objNow + timedelta(days=90)
+    var_objRow.expires_at = var_objNow + timedelta(days=30)
     return var_objRow
 
 

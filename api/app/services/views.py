@@ -42,7 +42,7 @@ from app.models import (
     WeaponCheckMark,
     CpLedger,
 )
-from app.services.condition import validate_condition, ConditionError
+from app.services.condition import validate_condition, ConditionError, matches
 from app.services.project import apply_events
 
 PHASE_ORDER = [
@@ -222,7 +222,12 @@ def abilities_for_version(db: Session, version: ListVersion) -> list[Ability]:
                 ListVersionDetachment.list_version_id == version.id
             )
         ).all()
-    ) or [-1]
+    )
+    # Stratagems Core (seed) ficam no destacamento "Core Stratagems" e valem para qualquer lista.
+    core_det_ids = list(
+        db.scalars(select(Detachment.id).where(Detachment.name == "Core Stratagems")).all()
+    )
+    detachment_ids = list({*detachment_ids, *core_det_ids}) or [-1]
     enhancement_ids = [unit.enhancement_id for unit in units if unit.enhancement_id]
     ability_ids = []
     if enhancement_ids:
@@ -254,19 +259,33 @@ def abilities_for_version(db: Session, version: ListVersion) -> list[Ability]:
     return chosen
 
 
-def turn_guide(db: Session, version: ListVersion, phase: str | None, turn_owner: str | None, unit_id: int | None) -> dict:
+def turn_guide(
+    db: Session,
+    version: ListVersion,
+    phase: str | None,
+    turn_owner: str | None,
+    unit_id: int | None,
+    facts: dict | None = None,
+) -> dict:
     abilities = {item.id: item for item in abilities_for_version(db, version)}
     if not abilities:
         effects = []
     else:
         effects = db.scalars(select(RuleEffect).where(RuleEffect.ability_id.in_(abilities)).order_by(RuleEffect.sort_order)).all()
     units = units_for(db, version.id)
+    facts = facts or {}
+    if turn_owner and "turn_owner" not in facts:
+        facts = {**facts, "turn_owner": turn_owner}
+    if phase and "phase" not in facts:
+        facts = {**facts, "phase": phase}
     phases: dict[str, dict[str, list]] = {name: {"start": [], "during": [], "end": []} for name in PHASE_ORDER}
     for effect in effects:
         ability = abilities[effect.ability_id]
         if phase and effect.phase not in {phase, "any"}:
             continue
         if turn_owner and effect.turn_owner not in {turn_owner, "both"}:
+            continue
+        if effect.condition_json and not matches(effect.condition_json, facts):
             continue
         unit_ids = _effect_units(db, ability, units)
         if unit_id and unit_ids and unit_id not in unit_ids:
@@ -449,12 +468,23 @@ def sync_events(db: Session, game_id: uuid.UUID, events: list[dict]) -> dict:
     game = db.get(Game, game_id)
     if game is None:
         err(404, "not_found", "Partida não encontrada")
-    accepted, duplicates = [], []
+    accepted, duplicates, rejected = [], [], []
     for item in events:
         payload = item["payload"]
         encoded = json.dumps(payload)
         if len(encoded.encode()) > 8192:
             err(413, "payload_too_large", "Evento grande demais")
+        undoes = None
+        if item.get("undoes_event_id"):
+            try:
+                undoes = uuid.UUID(item["undoes_event_id"])
+            except (TypeError, ValueError):
+                rejected.append({"id": item["id"], "reason": "undoes_event_id_invalid"})
+                continue
+            target = db.get(GameEvent, undoes)
+            if target is None or target.game_id != game_id:
+                rejected.append({"id": item["id"], "reason": "undoes_event_id_foreign"})
+                continue
         created = _parse_time(item["created_at"])
         row = GameEvent(
             id=uuid.UUID(item["id"]),
@@ -463,7 +493,7 @@ def sync_events(db: Session, game_id: uuid.UUID, events: list[dict]) -> dict:
             device_id=item["device_id"][:64],
             type=item["type"],
             payload=payload,
-            undoes_event_id=uuid.UUID(item["undoes_event_id"]) if item.get("undoes_event_id") else None,
+            undoes_event_id=undoes,
             created_at=created,
         )
         try:
@@ -471,11 +501,33 @@ def sync_events(db: Session, game_id: uuid.UUID, events: list[dict]) -> dict:
                 db.add(row)
                 db.flush()
             accepted.append(item["id"])
-        except IntegrityError:
-            duplicates.append(item["id"])
+        except IntegrityError as exc:
+            db_err = getattr(exc, "orig", None)
+            constraint = getattr(db_err, "diag", None)
+            constraint_name = getattr(constraint, "constraint_name", "") or ""
+            existing = db.get(GameEvent, uuid.UUID(item["id"]))
+            if existing is not None and existing.game_id == game_id:
+                duplicates.append(item["id"])
+                continue
+            same_seq = db.scalar(
+                select(GameEvent).where(
+                    GameEvent.game_id == game_id,
+                    GameEvent.device_id == item["device_id"][:64],
+                    GameEvent.seq == item["seq"],
+                )
+            )
+            if same_seq is not None and str(same_seq.id) == item["id"]:
+                duplicates.append(item["id"])
+                continue
+            reason = "integrity_error"
+            if "type" in constraint_name or "check" in constraint_name.lower():
+                reason = "type_or_check"
+            elif same_seq is not None:
+                reason = "seq_conflict"
+            rejected.append({"id": item["id"], "reason": reason})
     _rebuild(db, game)
     last = db.scalar(select(func.max(GameEvent.seq)).where(GameEvent.game_id == game_id)) or 0
-    return {"accepted": accepted, "duplicates": duplicates, "last_seq": last}
+    return {"accepted": accepted, "duplicates": duplicates, "rejected": rejected, "last_seq": last}
 
 
 def _rebuild(db: Session, game: Game) -> None:

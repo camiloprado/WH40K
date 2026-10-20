@@ -1,0 +1,21 @@
+{
+  "name": "c12_per_turn_across_turns",
+  "events": [
+    {"seq": 1, "type": "game_started", "payload": {"first_player": "me", "cp_me": 3, "units": [{"list_unit_id": 1, "name": "X"}]}, "created_at": "2026-10-15T12:00:00Z"},
+    {"seq": 2, "type": "stratagem_used", "payload": {"stratagem_name": "Fire Overwatch", "cp_spent": 1, "use_limit": "per_turn", "player": "me"}, "created_at": "2026-10-15T12:00:01Z"},
+    {"seq": 3, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:02Z"},
+    {"seq": 4, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:03Z"},
+    {"seq": 5, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:04Z"},
+    {"seq": 6, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:05Z"},
+    {"seq": 7, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:06Z"},
+    {"seq": 8, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:07Z"},
+    {"seq": 9, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:08Z"},
+    {"seq": 10, "type": "phase_advanced", "payload": {}, "created_at": "2026-10-15T12:00:09Z"},
+    {"seq": 11, "type": "stratagem_used", "payload": {"stratagem_name": "Fire Overwatch", "cp_spent": 1, "use_limit": "per_turn", "player": "me"}, "created_at": "2026-10-15T12:00:10Z"}
+  ],
+  "expect": {
+    "uses": 2,
+    "cp_me": 1,
+    "no_warning": "stratagem_limit"
+  }
+}

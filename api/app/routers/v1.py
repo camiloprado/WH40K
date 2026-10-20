@@ -129,9 +129,19 @@ class GameIn(BaseModel):
     cp_opponent: int = 0
 
 
+class SyncEventIn(BaseModel):
+    id: uuid.UUID
+    seq: int = Field(ge=1)
+    device_id: str = Field(min_length=1, max_length=64)
+    type: str = Field(min_length=1, max_length=64)
+    payload: dict = Field(default_factory=dict)
+    undoes_event_id: uuid.UUID | None = None
+    created_at: str
+
+
 class SyncIn(BaseModel):
     game_id: uuid.UUID
-    events: list[dict]
+    events: list[SyncEventIn]
 
 
 class BsdataIn(BaseModel):
@@ -150,13 +160,22 @@ def health(database: Session = Depends(db_session)):
 @router.post("/session")
 def open_session(body: TokenIn, request: Request, response: Response, database: Session = Depends(db_session)):
     raw = login(database, body.token, request.headers.get("user-agent"), request.client.host if request.client else "local")
-    response.set_cookie(COOKIE, raw, max_age=90 * 24 * 3600, httponly=True, secure=True, samesite="strict", path="/")
+    response.set_cookie(COOKIE, raw, max_age=30 * 24 * 3600, httponly=True, secure=True, samesite="strict", path="/")
     return {"ok": True}
 
 
 @router.delete("/session")
 def close_session(request: Request, response: Response, database: Session = Depends(db_session), _s=Depends(authed)):
     logout(database, request.cookies.get(COOKIE))
+    response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+    return {"ok": True}
+
+
+@router.delete("/session/all")
+def close_all_sessions(response: Response, database: Session = Depends(db_session), _s=Depends(authed)):
+    from app.security import invalidate_all
+
+    invalidate_all(database)
     response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
     return {"ok": True}
 
@@ -384,7 +403,19 @@ def get_game(game_id: uuid.UUID, database: Session = Depends(db_session), _s=Dep
 def games_sync(body: SyncIn, database: Session = Depends(db_session), _s=Depends(authed)):
     if len(body.events) > 500:
         err(400, "invalid_input", "No máximo 500 eventos")
-    return sync_events(database, body.game_id, body.events)
+    events = [
+        {
+            "id": str(item.id),
+            "seq": item.seq,
+            "device_id": item.device_id,
+            "type": item.type,
+            "payload": item.payload,
+            "undoes_event_id": str(item.undoes_event_id) if item.undoes_event_id else None,
+            "created_at": item.created_at,
+        }
+        for item in body.events
+    ]
+    return sync_events(database, body.game_id, events)
 
 
 @router.get("/games/{game_id}/events")

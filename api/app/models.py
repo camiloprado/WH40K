@@ -163,6 +163,7 @@ class TargetProfile(Base):
     fnp: Mapped[int | None] = mapped_column(SmallInteger)
     models: Mapped[int] = mapped_column(SmallInteger, default=1)
     keywords: Mapped[list] = mapped_column(ARRAY(Text), default=list)
+    source_ref: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

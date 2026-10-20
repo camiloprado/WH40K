@@ -1032,6 +1032,7 @@ export function NewGameScreen() {
         mission_name: mission,
         cp_me: cp,
         cp_opponent: 0,
+        phases_v: 2,
         units: (bundle.units || []).map((unit: any) => ({ list_unit_id: unit.id, name: unit.datasheet_name })),
         attachments: bundle.attachments || [],
       },

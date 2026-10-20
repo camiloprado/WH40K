@@ -9,6 +9,7 @@ import {
   isChoiceActive,
   LANES,
   PHASES,
+  PHASES_V2,
   shadowNow,
   zoneOf,
   type Choice,
@@ -18,8 +19,8 @@ import {
   type Projection,
   type Zone,
 } from "./engine/project";
-import { evaluateUnit, type Eligibility, type Moved } from "./engine/eligibility";
-import { flushSync } from "./sync";
+import { canStartAction, evaluateUnit, type Eligibility, type Moved } from "./engine/eligibility";
+import { flushSync, onSyncStatus, syncRejectedCount, syncServerDown } from "./sync";
 import { HypothesisBadge } from "./components";
 
 const PHASE_NAMES: Record<string, string> = {
@@ -31,6 +32,7 @@ const PHASE_NAMES: Record<string, string> = {
   charge: "Charge",
   fight: "Fight",
   end_of_turn: "Fim do turno",
+  end_of_round: "Fim da rodada",
 };
 
 const MOVES: [Moved, string][] = [
@@ -46,7 +48,12 @@ const LANE_NAMES: Record<Lane, string> = { left: "Esquerda", center: "Centro", r
 const FRONT_LANES: Lane[] = ["left", "center", "right"];
 const PERSONAL_KINDS = new Set(["unit", "leader", "enhancement"]);
 const TIMING_NAMES: Record<string, string> = { start: "Início", during: "Durante", end: "Fim" };
-const SCOPE_NAMES: Record<string, string> = { turn: "neste turno", round: "nesta rodada", battle: "na batalha" };
+const SCOPE_NAMES: Record<string, string> = {
+  turn: "neste turno",
+  round: "nesta rodada",
+  battle: "na batalha",
+  until_own_command: "até seu próximo Command",
+};
 
 type Place = Lane | "reserves" | "destroyed";
 const PLACES: Place[] = [...LANES, "reserves", "destroyed"];
@@ -63,7 +70,7 @@ export type PhaseEffect = {
   unit_ids: number[];
   choice_options: string[];
   choice_count: number | null;
-  choice_scope: "turn" | "round" | "battle";
+  choice_scope: "turn" | "round" | "battle" | "until_own_command";
 };
 
 type Card = { unit: any; live: LiveUnit; result: Eligibility; zone: Zone; place: Place; order: number; effects: PhaseEffect[]; chosen: string[] };
@@ -129,6 +136,8 @@ export function GameScreen() {
   const [bundle, setBundle] = useState<any>(null);
   const [missing, setMissing] = useState(false);
   const [online, setOnline] = useState(navigator.onLine);
+  const [rejected, setRejected] = useState(0);
+  const [serverDown, setServerDown] = useState(false);
   const [selected, setSelected] = useState<number | null>(null);
   const [menu, setMenu] = useState<Menu>(null);
   const [toast, setToast] = useState<string | null>(null);
@@ -158,20 +167,40 @@ export function GameScreen() {
     const on = () => setOnline(navigator.onLine);
     window.addEventListener("online", on);
     window.addEventListener("offline", on);
+    const refresh = () => {
+      setRejected(syncRejectedCount());
+      setServerDown(syncServerDown());
+    };
+    refresh();
+    const off = onSyncStatus(refresh);
     let lock: { release: () => Promise<void> } | null = null;
-    navigator.wakeLock
-      ?.request("screen")
-      .then((value) => (lock = value))
-      .catch(() => setWake(false));
+    const requestWake = () => {
+      navigator.wakeLock
+        ?.request("screen")
+        .then((value) => {
+          lock = value;
+          setWake(true);
+          value.addEventListener("release", () => setWake(false));
+        })
+        .catch(() => setWake(false));
+    };
+    requestWake();
+    const onVis = () => {
+      if (document.visibilityState === "visible") requestWake();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       window.removeEventListener("online", on);
       window.removeEventListener("offline", on);
+      document.removeEventListener("visibilitychange", onVis);
+      off();
       lock?.release();
     };
   }, []);
 
   const projection = useMemo(() => applyEvents(events || []), [events]);
   const phase = projection.phase;
+  const phaseList = projection.phasesV >= 2 ? [...PHASES_V2] : [...PHASES];
   const effectsNow = useMemo(() => (bundle ? phaseEffects(bundle, phase, projection.player === "me") : []), [bundle, phase, projection.player]);
 
   const cards: Card[] = useMemo(() => {
@@ -186,6 +215,7 @@ export function GameScreen() {
         weapons: (unit.wargear || []).map((item: any) => ({ name: item.weapon_name, keywords: item.keywords || [], kind: item.kind })),
         unitKeywords: unit.keywords || [],
         effects: bundle.rule_effects || [],
+        activePlayer: projection.player === "opponent" ? "opponent" : "me",
         game: {
           round: projection.round,
           turnOwner: projection.player === "me" ? "own" : "opponent",
@@ -201,7 +231,7 @@ export function GameScreen() {
       const place: Place = zone === "table" ? live.lane || "center" : zone;
       const effects = effectsNow.filter((effect) => effect.unit_ids.includes(unit.id));
       const chosen = projection.choices
-        .filter((item) => item.list_unit_id === unit.id && isChoiceActive(item, projection.round, projection.player))
+        .filter((item) => item.list_unit_id === unit.id && isChoiceActive(item, projection.round, projection.player, projection.phase))
         .flatMap((item) => item.options);
       return { unit, live, result, zone, place, order, effects, chosen };
     });
@@ -210,8 +240,14 @@ export function GameScreen() {
   const flash = useCallback((message: string) => {
     setToast(message);
     window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
+    toastTimer.current = window.setTimeout(() => setToast(null), 6000);
   }, []);
+
+  useEffect(() => {
+    if (projection.warnings.includes("reserves_destroyed")) {
+      flash("Reserva ainda fora na R3: marque como destruída (reserves_destroyed)");
+    }
+  }, [projection.warnings, flash]);
 
   const push = useCallback(
     async (type: string, payload: Record<string, unknown>, label?: string) => {
@@ -312,6 +348,13 @@ export function GameScreen() {
 
   function overrideKeys(card: Card): { key: string }[] {
     const keys: string[] = [];
+    if (!mine) {
+      if (phase === "shooting") keys.push("overwatch");
+      if (phase === "charge") keys.push("heroic_intervention");
+      if (phase === "movement") {
+        keys.push("rapid_ingress", "reactive_move");
+      }
+    }
     if (phase === "shooting") {
       if (card.live.moved === "advanced") keys.push("shoot_after_advance");
       if (card.live.moved === "fell_back") keys.push("shoot_after_fall_back");
@@ -321,6 +364,10 @@ export function GameScreen() {
     if (phase === "charge") {
       if (card.live.moved === "advanced") keys.push("charge_after_advance");
       if (card.live.moved === "fell_back") keys.push("charge_after_fall_back");
+    }
+    if (phase === "movement") {
+      if (card.live.moved === "advanced") keys.push("action_after_advance");
+      if (card.live.moved === "fell_back") keys.push("action_after_fall_back");
     }
     if (phase === "fight") keys.push("fight_again");
     return keys.map((key) => ({ key }));
@@ -346,6 +393,10 @@ export function GameScreen() {
   }
 
   function moveTo(unitId: number, place: Place) {
+    const live = projection.live[unitId];
+    if (live?.in_reserves && place !== "reserves" && place !== "destroyed" && live.engaged) {
+      flash("Engajada em reserva: Realm of Chaos / Warp Rifts — resolva engajamento antes do ingress");
+    }
     const patch =
       place === "destroyed"
         ? { destroyed: true, in_reserves: false }
@@ -356,7 +407,15 @@ export function GameScreen() {
   }
 
   const choiceFor = (effect: PhaseEffect, unitId: number | null) =>
-    activeChoice(projection.choices, effect.id, unitId, effect.choice_scope, projection.round, projection.player);
+    activeChoice(
+      projection.choices,
+      effect.id,
+      unitId,
+      effect.choice_scope,
+      projection.round,
+      projection.player,
+      projection.phase,
+    );
 
   function choose(effect: PhaseEffect, unitId: number | null, options: string[]) {
     const who = unitId ? `${names.get(unitId)} · ` : "";
@@ -371,12 +430,15 @@ export function GameScreen() {
   const abilityName = new Map<number, string>((bundle.abilities || []).map((item: any) => [item.id, item.name]));
   const effectName = new Map<number, string>((bundle.rule_effects || []).map((item: any) => [item.id, abilityName.get(item.ability_id) || item.owner_label]));
   const generalActive = projection.choices.filter(
-    (item) => item.list_unit_id == null && isChoiceActive(item, projection.round, projection.player) && !generalEffects.some((effect) => effect.id === item.effect_id),
+    (item) =>
+      item.list_unit_id == null &&
+      isChoiceActive(item, projection.round, projection.player, projection.phase) &&
+      !generalEffects.some((effect) => effect.id === item.effect_id),
   );
 
   async function jumpTo(target: string) {
-    const from = PHASES.indexOf(phase as (typeof PHASES)[number]);
-    const to = PHASES.indexOf(target as (typeof PHASES)[number]);
+    const from = phaseList.indexOf(phase as (typeof phaseList)[number]);
+    const to = phaseList.indexOf(target as (typeof phaseList)[number]);
     if (to <= from) return;
     for (let step = from; step < to; step += 1) await push("phase_advanced", {});
   }
@@ -409,9 +471,18 @@ export function GameScreen() {
   const unmoved = cards.filter((item) => item.zone === "table" && item.live.moved === "none").length;
 
   return (
-    <div className="table-app" style={{ ["--phase" as string]: `var(--${phase})`, ["--accent" as string]: bundle.list?.accent_color }} onClick={() => setMenu(null)}>
+    <div
+      className="table-app"
+      style={{
+        ["--phase" as string]: `var(--${phase})`,
+        ["--on-phase" as string]: `var(--on-${phase})`,
+        ["--accent" as string]: bundle.list?.accent_color,
+      }}
+      onClick={() => setMenu(null)}
+    >
       <PhaseRail
         phase={phase}
+        phases={phaseList}
         mine={mine}
         pendingCount={pendingUnits.length}
         onPick={jumpTo}
@@ -498,7 +569,17 @@ export function GameScreen() {
           footer={
             <>
               <span className="round mono">Rodada {projection.round}</span>
-              <span className={`chip ${online ? "" : "chip-warn"}`}>{!online ? "Offline" : pending ? `Sync ${pending}` : "Sync ok"}</span>
+              <span className={`chip ${!online || serverDown || rejected ? "chip-warn" : ""}`}>
+                {!online
+                  ? `Offline · ${pending}`
+                  : rejected
+                    ? `${rejected} rejeitados`
+                    : serverDown
+                      ? `Servidor fora · ${pending}`
+                      : pending
+                        ? `Sync ${pending}`
+                        : "Sincronizado"}
+              </span>
               {!wake && <span className="chip chip-warn" title="Seu navegador não mantém a tela acesa. Ajuste o bloqueio automático.">Tela pode apagar</span>}
               <button className="ghost" onClick={undo} disabled={!lastAction} title="Ctrl+Z">
                 Desfazer
@@ -555,7 +636,13 @@ export function GameScreen() {
           </EffectList>
         </section>
         <PhaseTools phase={phase} mine={mine} projection={projection} bundle={bundle} cards={cards} push={push} />
-        <Stratagems bundle={bundle} projection={projection} push={push} />
+        <Stratagems
+          bundle={bundle}
+          projection={projection}
+          cards={cards}
+          selectedUnitId={selected}
+          push={push}
+        />
         <GameLog log={projection.log} names={names} />
       </aside>
 
@@ -590,19 +677,31 @@ export function GameScreen() {
 
 function PhaseRail({
   phase,
+  phases = [...PHASES],
   mine,
   pendingCount,
   onPick,
   onNext,
 }: {
   phase: string;
+  phases?: string[];
   mine: boolean;
   pendingCount: number;
   onPick: (phase: string) => void;
   onNext: () => void;
 }) {
-  const current = PHASES.indexOf(phase as (typeof PHASES)[number]);
-  const short = { round_start: "INI", command: "CMD", battle_shock: "BS", movement: "MOV", shooting: "SHT", charge: "CHG", fight: "FGT", end_of_turn: "FIM" } as Record<string, string>;
+  const current = phases.indexOf(phase);
+  const short = {
+    round_start: "INI",
+    command: "CMD",
+    battle_shock: "BS",
+    movement: "MOV",
+    shooting: "SHT",
+    charge: "CHG",
+    fight: "FGT",
+    end_of_turn: "FIM",
+    end_of_round: "Rd",
+  } as Record<string, string>;
   return (
     <nav className="phase-rail" aria-label="Fases">
       <div className="turn-tag">{mine ? "Seu turno" : "Turno do oponente"}</div>
@@ -621,7 +720,7 @@ function PhaseRail({
       )}
       <details className="phase-menu">
         <summary>Fases</summary>
-        {PHASES.map((id, index) => (
+        {phases.map((id, index) => (
           <button
             key={id}
             className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
@@ -882,7 +981,25 @@ function Inspector({
       {phase === "movement" && (
         <div className="action-grid">
           {MOVES.map(([move, label]) => (
-            <button key={move} className={live.moved === move ? "primary" : ""} onClick={() => onPatch({ moved: move }, label)}>
+            <button
+              key={move}
+              className={live.moved === move ? "primary" : ""}
+              onClick={() => {
+                if (move === "fell_back" && live.engaged && !live.battle_shocked) {
+                  const mode = window.confirm(
+                    "Ordered Retreat (OK) ou Desperate Escape (Cancelar)?\n\nDesperate Escape: hazard roll por modelo e teste de battle-shock depois.",
+                  )
+                    ? "ordered"
+                    : "desperate";
+                  onPatch({ moved: move }, mode === "desperate" ? "Recuou (Desperate Escape)" : "Recuou (Ordered Retreat)");
+                  if (mode === "desperate") {
+                    window.alert("Hazard roll por modelo (1–2 = ferida mortal). Em seguida registre o teste de battle-shock.");
+                  }
+                  return;
+                }
+                onPatch({ moved: move }, label);
+              }}
+            >
               {label}
             </button>
           ))}
@@ -899,6 +1016,12 @@ function Inspector({
           <button onClick={() => onBattleShock(false)}>Falhou</button>
         </div>
       )}
+      {live.moved === "fell_back" && live.engaged && !live.battle_shocked && phase === "movement" && (
+        <div className="action-grid">
+          <button onClick={() => onBattleShock(true)}>Desperate Escape: passou BS</button>
+          <button onClick={() => onBattleShock(false)}>Desperate Escape: falhou BS</button>
+        </div>
+      )}
       {result.status === "inactive" && overrides.length > 0 && (
         <button className="ghost wide" onClick={() => onPatch({}, "restrição ignorada", overrides)}>
           Ignorar restrição nesta fase
@@ -907,7 +1030,20 @@ function Inspector({
 
       <div className="toggles">
         <Toggle on={live.engaged} label="Engajada" onClick={() => onPatch({ engaged: !live.engaged }, live.engaged ? "fora de combate" : "engajada")} />
-        <Toggle on={live.on_action} label="Em ação" title="Unidade fazendo uma Action, como uma missão. Enquanto isso, não atira nem carrega." onClick={() => onPatch({ on_action: !live.on_action }, live.on_action ? "saiu da ação" : "em ação")} />
+        <Toggle
+          on={live.on_action}
+          label="Em ação"
+          title="Unidade fazendo uma Action, como uma missão. Enquanto isso, não atira nem carrega."
+          onClick={() => {
+            if (!live.on_action) {
+              const reasons = canStartAction(live, unit.keywords || [], {
+                oc: unit.oc ?? unit.objective_control,
+              });
+              if (reasons.length && !window.confirm(`${reasons.join(" · ")}. Registrar ação mesmo assim?`)) return;
+            }
+            onPatch({ on_action: !live.on_action }, live.on_action ? "saiu da ação" : "em ação");
+          }}
+        />
         <Toggle on={live.below_half} label="Abaixo da metade" onClick={() => onPatch({ below_half: !live.below_half }, live.below_half ? "acima da metade" : "abaixo da metade")} />
         <Toggle on={live.battle_shocked} label="Battle-shock" onClick={() => onPatch({ battle_shocked: !live.battle_shocked }, live.battle_shocked ? "sem battle-shock" : "battle-shock")} />
       </div>
@@ -1291,30 +1427,42 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
   }
   if (phase === "end_of_turn") {
     const owner = projection.player as "me" | "opponent";
+    const checked = (key: string) =>
+      projection.checklist.some(
+        (item) => item.round === projection.round && item.player === owner && item.key === key && item.done,
+      );
+    const toggleCheck = (key: string) =>
+      push("checklist_set", { key, done: !checked(key), player: owner }, `Checklist: ${key}`);
+    const ctrlLabel: Record<string, string> = { me: "Você", opponent: "Op", contested: "Disputado", none: "—" };
     return (
       <section className="panel">
         <h2>Fim do turno</h2>
         <div className="checklist">
           <label className="row">
-            <input type="checkbox" /> Primária
+            <input type="checkbox" checked={checked("primary")} onChange={() => toggleCheck("primary")} /> Primária
           </label>
           {(bundle.version?.secondaries || []).map((item: string) => (
             <label key={item} className="row">
-              <input type="checkbox" /> {item}
+              <input type="checkbox" checked={checked(`sec:${item}`)} onChange={() => toggleCheck(`sec:${item}`)} /> {item}
             </label>
           ))}
           <label className="row">
-            <input type="checkbox" /> Ações concluídas
+            <input type="checkbox" checked={checked("actions")} onChange={() => toggleCheck("actions")} /> Ações concluídas
           </label>
         </div>
         <p className="muted">Objetivos</p>
-        <div className="objectives">
+        <div className="objectives" role="group" aria-label="Controle de objetivos">
           {OBJECTIVES.map((label) => {
             const controller = projection.objectives.find((item) => item.objective_label === label && item.round === projection.round)?.controller || "none";
             const next = controller === "none" ? "me" : controller === "me" ? "opponent" : controller === "opponent" ? "contested" : "none";
             return (
-              <button key={label} className={`objective ${controller}`} onClick={() => push("objective_set", { objective_label: label, controller: next, player_turn: owner })} title="Toque para trocar: você → oponente → disputado → ninguém">
-                {label}
+              <button
+                key={label}
+                className={`objective ${controller}`}
+                onClick={() => push("objective_set", { objective_label: label, controller: next, player_turn: owner })}
+                title="Toque para trocar: você → oponente → disputado → ninguém"
+              >
+                {label} · {ctrlLabel[controller] || controller}
               </button>
             );
           })}
@@ -1343,12 +1491,32 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
   return null;
 }
 
-function Stratagems({ bundle, projection, push }: { bundle: any; projection: Projection; push: PushFn }) {
+function Stratagems({
+  bundle,
+  projection,
+  cards,
+  selectedUnitId,
+  push,
+}: {
+  bundle: any;
+  projection: Projection;
+  cards: Card[];
+  selectedUnitId: number | null;
+  push: PushFn;
+}) {
+  const [picking, setPicking] = useState<{ item: any; used: boolean; short: boolean } | null>(null);
+  const [targetId, setTargetId] = useState<number | null>(null);
+  const mineTurn = projection.player === "me";
   const effects = (bundle.rule_effects || []).filter((effect: any) => effect.effect_kind === "stratagem");
   const abilityIds = new Set(
     effects
       .filter((effect: any) => effect.phase === projection.phase || effect.phase === "any")
-      .filter((effect: any) => effect.turn_owner === "both" || effect.turn_owner === "own" || !effect.turn_owner)
+      .filter((effect: any) => {
+        if (!effect.turn_owner || effect.turn_owner === "both") return true;
+        if (effect.turn_owner === "own") return mineTurn;
+        if (effect.turn_owner === "opponent") return !mineTurn;
+        return true;
+      })
       .map((effect: any) => effect.ability_id),
   );
   const all = (bundle.abilities || []).filter((item: any) => item.kind === "stratagem");
@@ -1356,6 +1524,31 @@ function Stratagems({ bundle, projection, push }: { bundle: any; projection: Pro
   const later = all.filter((item: any) => !now.includes(item));
   if (!all.length) return null;
   const cp = projection.cp.me;
+  const targets = cards.filter((card) => !card.live.destroyed && (card.result.status === "active" || card.result.status === "warn"));
+  const confirm = (item: any, used: boolean, short: boolean, target: number | null) => {
+    push(
+      "stratagem_used",
+      {
+        ability_id: item.id,
+        stratagem_name: item.name,
+        cp_spent: item.cp_cost || 0,
+        use_limit: item.use_limit || "per_phase",
+        player: "me",
+        limit_overridden: used,
+        cp_override: short,
+        target_list_unit_id: target,
+      },
+      `${item.name} (−${item.cp_cost || 0} CP)`,
+    );
+    setPicking(null);
+  };
+  const openPick = (item: any, used: boolean, short: boolean) => {
+    if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
+    if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
+    const preset = selectedUnitId && targets.some((card) => card.unit.id === selectedUnitId) ? selectedUnitId : null;
+    setTargetId(preset);
+    setPicking({ item, used, short });
+  };
   const render = (item: any, markUsed: boolean) => {
     const used = projection.stratagem_uses.some(
       (use) => use.stratagem_name === item.name && use.phase === projection.phase && use.round === projection.round && use.player === "me",
@@ -1365,24 +1558,7 @@ function Stratagems({ bundle, projection, push }: { bundle: any; projection: Pro
       <button
         key={item.id}
         className={`stratagem ${used ? "used" : ""} ${cost > cp ? "short" : ""}`}
-        onClick={() => {
-          if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
-          const short = cost > cp;
-          if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
-          push(
-            "stratagem_used",
-            {
-              ability_id: item.id,
-              stratagem_name: item.name,
-              cp_spent: cost,
-              use_limit: item.use_limit || "per_phase",
-              player: "me",
-              limit_overridden: used,
-              cp_override: short,
-            },
-            `${item.name} (−${cost} CP)`,
-          );
-        }}
+        onClick={() => openPick(item, used, cost > cp)}
       >
         <span>
           {item.name}
@@ -1401,6 +1577,35 @@ function Stratagems({ bundle, projection, push }: { bundle: any; projection: Pro
           <summary>Outras fases ({later.length})</summary>
           {later.map((item: any) => render(item, false))}
         </details>
+      )}
+      {picking && (
+        <div className="sheet-confirm" role="dialog" aria-label="Alvo do stratagem">
+          <h3>{picking.item.name}</h3>
+          <p className="muted">Escolha o alvo (opcional)</p>
+          <div className="action-grid">
+            <button className={targetId == null ? "primary" : ""} onClick={() => setTargetId(null)}>
+              Sem alvo
+            </button>
+            {targets.map((card) => (
+              <button
+                key={card.unit.id}
+                className={targetId === card.unit.id ? "primary" : ""}
+                onClick={() => setTargetId(card.unit.id)}
+              >
+                {card.unit.datasheet_name}
+                {card.live.battle_shocked ? " · BS" : ""}
+              </button>
+            ))}
+          </div>
+          <div className="action-grid" style={{ marginTop: 12 }}>
+            <button className="ghost" onClick={() => setPicking(null)}>
+              Cancelar
+            </button>
+            <button className="primary" onClick={() => confirm(picking.item, picking.used, picking.short, targetId)}>
+              Confirmar
+            </button>
+          </div>
+        </div>
       )}
     </section>
   );

@@ -32,5 +32,10 @@ Repo público sem LICENSE: em seeds, docs e commits, só uma linha parafraseada 
 ## O que continua sem fonte / fora do motor
 
 - **Textos de datasheet** no import: placeholder até o usuário escrever o resumo.
-- **Keywords no dano** (Lethal, Sustained, Devastating Wounds, etc.): v2.1.
+- **Keywords no dano:** Sustained/Lethal/Twin-linked/Torrent no cliente (`damage.ts`); Devastating Wounds e demais ainda fora.
+- **C10–C17 / DB / B1–B3:** flags por turno, `activePlayer`, stratagem alvo, `phases_v=2`+`end_of_round`, sync `rejected[]`, seed Core/Invulnerability, perfis Tyranids com `source_ref`.
 - **Unidades do oponente** para 17.03/Terror real: Q9 do SPEC.
+
+## Gate manual (§11 Correcoes a–o)
+
+Após merge desta rodada: smoke Daemons passos j–m; checklist a–o (inclui migrations Q7/DB1 e rejeitados DB3).

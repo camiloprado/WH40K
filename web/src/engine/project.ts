@@ -2,6 +2,7 @@ import type { Moved } from "./eligibility";
 
 const con_lstPhases = ["round_start", "command", "battle_shock", "movement", "shooting", "charge", "fight", "end_of_turn"] as const;
 export const PHASES = con_lstPhases;
+export const PHASES_V2 = [...con_lstPhases, "end_of_round"] as const;
 
 export type GameEvent = {
   id: string;
@@ -37,7 +38,7 @@ const con_lstLanes = ["left", "center", "right", "home"] as const;
 export const LANES = con_lstLanes;
 export type Lane = (typeof con_lstLanes)[number];
 
-export type ChoiceScope = "turn" | "round" | "battle";
+export type ChoiceScope = "turn" | "round" | "battle" | "until_own_command";
 
 export type Choice = {
   effect_id: number;
@@ -66,6 +67,7 @@ export type Projection = {
     phase: string;
     round: number;
     player: string;
+    turn_player: string;
     target_list_unit_id?: number | null;
   }[];
   objectives: { objective_label: string; controller: string; round: number }[];
@@ -87,6 +89,8 @@ export type Projection = {
   log: LogEntry[];
   cpLedger: { round: number; turn_player: string; phase: string; player: string; reason: string; delta: number }[];
   eventRules: boolean;
+  phasesV: number;
+  checklist: { round: number; player: string; key: string; done: boolean }[];
 };
 
 export type ShadowNow = { own_dz: true; nml: boolean; opp_dz: boolean; known: boolean };
@@ -184,6 +188,8 @@ function empty(): Projection & { started: boolean } {
     log: [],
     cpLedger: [],
     eventRules: false,
+    phasesV: 1,
+    checklist: [],
     started: false,
   };
 }
@@ -222,6 +228,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     state.cp.opponent = Number(payload.cp_opponent || 0);
     state.attachments = payload.attachments || [];
     state.eventRules = Boolean(payload.event_rules);
+    state.phasesV = Number(payload.phases_v || 1);
     for (const unit of payload.units || []) {
       state.live[unit.list_unit_id] = blank(unit.list_unit_id, unit.name || "", 1);
     }
@@ -232,22 +239,42 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     if ("event_rules" in payload) state.eventRules = Boolean(payload.event_rules);
     return;
   }
+  if (event.type === "checklist_set") {
+    const key = String(payload.key || "");
+    const player = payload.player || state.player;
+    state.checklist = state.checklist.filter(
+      (item) => !(item.round === state.round && item.player === player && item.key === key),
+    );
+    state.checklist.push({ round: state.round, player, key, done: Boolean(payload.done) });
+    return;
+  }
   if (event.type === "phase_advanced") {
-    const index = PHASES.indexOf(state.phase as (typeof PHASES)[number]);
-    let enteredMine = false;
-    if (index < PHASES.length - 1) state.phase = PHASES[index + 1];
-    else {
-      if (state.player !== state.firstPlayer) {
-        state.round = Math.min(10, state.round + 1);
-        state.player = state.firstPlayer;
-        state.phase = "round_start";
+    let turnedOver = false;
+    if (state.phase === "end_of_round") {
+      state.round = Math.min(10, state.round + 1);
+      state.player = state.firstPlayer;
+      state.phase = "round_start";
+      turnedOver = true;
+    } else {
+      const index = PHASES.indexOf(state.phase as (typeof PHASES)[number]);
+      if (index >= 0 && index < PHASES.length - 1) {
+        state.phase = PHASES[index + 1];
+      } else if (state.player !== state.firstPlayer) {
+        if (state.phasesV >= 2) {
+          state.phase = "end_of_round";
+        } else {
+          state.round = Math.min(10, state.round + 1);
+          state.player = state.firstPlayer;
+          state.phase = "round_start";
+          turnedOver = true;
+        }
       } else {
         state.player = state.player === "me" ? "opponent" : "me";
         state.phase = "command";
+        turnedOver = true;
       }
-      enteredMine = state.player === "me";
     }
-    if (enteredMine) {
+    if (turnedOver) {
       for (const [id, prev] of Object.entries(state.live)) {
         state.live[Number(id)] = blank(Number(id), prev.name, state.round, prev);
       }
@@ -256,6 +283,10 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       for (const unit of Object.values(state.live)) {
         unit.engaged_at_fight_start = unit.engaged;
       }
+    }
+    if (state.phase === "end_of_round" && state.round >= 3) {
+      const stuck = Object.values(state.live).some((unit) => unit.in_reserves && !unit.destroyed);
+      if (stuck) state.warnings.push("reserves_destroyed");
     }
     return;
   }
@@ -272,7 +303,10 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "effect_chosen") {
-    const scope: ChoiceScope = payload.scope === "round" || payload.scope === "battle" ? payload.scope : "turn";
+    const scope: ChoiceScope =
+      payload.scope === "round" || payload.scope === "battle" || payload.scope === "until_own_command"
+        ? payload.scope
+        : "turn";
     const options = (payload.options || []).map(String).slice(0, 12);
     if (payload.count && options.length > Number(payload.count)) state.warnings.push("choice_over_count");
     const row: Choice = {
@@ -323,13 +357,27 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
   }
   if (event.type === "stratagem_used") {
     const name = payload.stratagem_name || "Stratagem";
-    const player = payload.player || state.player;
-    const prior = state.stratagem_uses.filter(
-      (item) => item.stratagem_name === name && item.player === player && item.phase === state.phase && item.round === state.round,
-    );
-    if (prior.length && !payload.limit_overridden) {
+    const player = payload.player === "opponent" ? "opponent" : "me";
+    const limit = payload.use_limit || "per_phase";
+    const sameName = state.stratagem_uses.filter((item) => item.stratagem_name === name && item.player === player);
+    const phaseHit = sameName.some((item) => item.round === state.round && item.phase === state.phase);
+    if (phaseHit && !payload.limit_overridden) {
       state.warnings.push("stratagem_limit");
       return;
+    }
+    if (limit !== "none" && limit !== "per_phase" && !payload.limit_overridden) {
+      const limitHit =
+        limit === "per_battle"
+          ? sameName.length > 0
+          : limit === "per_round"
+            ? sameName.some((item) => item.round === state.round)
+            : limit === "per_turn"
+              ? sameName.some((item) => item.round === state.round && item.turn_player === state.player)
+              : false;
+      if (limitHit) {
+        state.warnings.push("stratagem_limit");
+        return;
+      }
     }
     const targetId = payload.target_list_unit_id != null ? Number(payload.target_list_unit_id) : null;
     if (targetId != null) {
@@ -353,6 +401,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       phase: state.phase,
       round: state.round,
       player,
+      turn_player: state.player,
       target_list_unit_id: targetId,
     });
     return;
@@ -423,9 +472,14 @@ function sameChoice(left: Choice, right: Choice): boolean {
   return left.round === right.round && left.player === right.player;
 }
 
-export function isChoiceActive(choice: Choice, round: number, player: string): boolean {
+export function isChoiceActive(choice: Choice, round: number, player: string, phase?: string): boolean {
   if (choice.scope === "battle") return true;
   if (choice.scope === "round") return choice.round === round;
+  if (choice.scope === "until_own_command") {
+    if (player !== choice.player || phase !== "command") return true;
+    if (round > choice.round) return false;
+    return choice.phase === "command";
+  }
   return choice.round === round && choice.player === player;
 }
 
@@ -436,12 +490,13 @@ export function activeChoice(
   scope: ChoiceScope,
   round: number,
   player: string,
+  phase?: string,
 ): Choice | undefined {
   return choices.find(
     (item) =>
       item.effect_id === effectId &&
       item.list_unit_id === unitId &&
-      (scope === "battle" || (item.round === round && (scope === "round" || item.player === player))),
+      isChoiceActive({ ...item, scope }, round, player, phase),
   );
 }
 
