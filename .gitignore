@@ -2,6 +2,8 @@ data/
 backups/
 *.dump
 .env
+.env.*
+!.env.example
 seeds/
 __pycache__/
 *.py[cod]

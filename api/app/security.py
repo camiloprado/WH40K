@@ -110,9 +110,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
         var_strHostname = var_strHost.split(":")[0].lower().strip("[]")
         var_objSettings = get_settings()
         var_setExtra = {item.strip().lower() for item in var_objSettings.extra_hosts.split(",") if item.strip()}
-        var_boolAllowed = (
-            var_strHostname in {"localhost", "127.0.0.1", *var_setExtra} or var_strHostname.endswith(".ts.net")
-        )
+        # Só FQDN listados em EXTRA_HOSTS (ex.: pc.tailnet.ts.net). Sem wildcard *.ts.net.
+        var_boolAllowed = var_strHostname in {"localhost", "127.0.0.1", *var_setExtra}
         if var_objSettings.app_env != "prod" and var_strHostname == "testserver":
             var_boolAllowed = True
         if not var_boolAllowed:
@@ -121,8 +120,18 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Host não permitido", "code": "host_not_allowed"},
             )
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
+            var_intLimit = 20 * 1024 * 1024 if request.url.path.endswith("/restore") else 204800
+            var_strLen = request.headers.get("content-length")
+            if var_strLen is not None:
+                try:
+                    if int(var_strLen) > var_intLimit:
+                        return JSONResponse(
+                            status_code=413,
+                            content={"detail": "Corpo grande demais", "code": "payload_too_large"},
+                        )
+                except ValueError:
+                    pass
             var_bytBody = await request.body()
-            var_intLimit = 20 * 1024 * 1024 if request.url.path == "/api/v1/restore" else 204800
             if len(var_bytBody) > var_intLimit:
                 return JSONResponse(
                     status_code=413,

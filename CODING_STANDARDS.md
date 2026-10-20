@@ -52,6 +52,8 @@ Exemplos:
 ## Outras regras do projeto
 
 - Sem texto de regra da Games Workshop persistido; hipóteses marcadas.
+- **Paráfrase de regras (S14):** o repositório é público e sem LICENSE. Em seeds, docs e commits use **só** uma linha parafraseada + seção/página da fonte. Nunca parágrafos, tabelas ou exemplos do PDF.
 - Testes usam o banco `wh40k_test`, nunca `wh40k`.
 - BSData: só hosts GitHub oficiais; cache em `api/data/` (fora do git).
 - Pastas e arquivos de regras de modelos (Cursor, Claude, Codex, etc.) ficam fora do git (ver `.gitignore`).
+- Login rate limit é global por IP do proxy (documentado); não confiar em `X-Forwarded-For` sem `--proxy-headers`.
