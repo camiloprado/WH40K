@@ -3,8 +3,8 @@ from __future__ import annotations
 import copy
 import uuid
 
-PHASES = ["round_start", "command", "battle_shock", "movement", "shooting", "charge", "fight", "end_of_turn"]
-PATCH_FIELDS = {
+con_lstPhases = ["round_start", "command", "battle_shock", "movement", "shooting", "charge", "fight", "end_of_turn"]
+con_setPatchFields = {
     "moved",
     "shot",
     "charged",
@@ -18,25 +18,30 @@ PATCH_FIELDS = {
     "in_reserves",
     "lane",
 }
-LANES = {"left", "center", "right", "home"}
-CHOICE_SCOPES = {"turn", "round", "battle"}
+con_setLanes = {"left", "center", "right", "home"}
+con_setChoiceScopes = {"turn", "round", "battle"}
+
+PHASES = con_lstPhases
+PATCH_FIELDS = con_setPatchFields
+LANES = con_setLanes
+CHOICE_SCOPES = con_setChoiceScopes
 
 
 def apply_events(events: list[dict]) -> dict:
-    ordered = sorted(events, key=lambda item: (item["created_at"], item["device_id"], item["seq"]))
-    inactive = _inactive(ordered)
-    state = _empty()
-    seen: dict[int, str] = {}
-    for event in ordered:
-        other = seen.get(event["seq"])
-        if other and other != event["device_id"]:
-            state["warnings"].append("seq_collision")
-        seen.setdefault(event["seq"], event["device_id"])
-        if event["id"] in inactive or event["type"] == "undo":
+    var_lstOrdered = sorted(events, key=lambda item: (item["created_at"], item["device_id"], item["seq"]))
+    var_setInactive = _inactive(var_lstOrdered)
+    var_dctState = _empty()
+    var_dctSeen: dict[int, str] = {}
+    for var_dctEvent in var_lstOrdered:
+        var_strOther = var_dctSeen.get(var_dctEvent["seq"])
+        if var_strOther and var_strOther != var_dctEvent["device_id"]:
+            var_dctState["warnings"].append("seq_collision")
+        var_dctSeen.setdefault(var_dctEvent["seq"], var_dctEvent["device_id"])
+        if var_dctEvent["id"] in var_setInactive or var_dctEvent["type"] == "undo":
             continue
-        _apply(state, event)
-        _snapshot(state)
-    return state
+        _apply(var_dctState, var_dctEvent)
+        _snapshot(var_dctState)
+    return var_dctState
 
 
 def _inactive(events: list[dict]) -> set[str]:

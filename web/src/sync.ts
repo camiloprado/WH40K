@@ -3,23 +3,23 @@ import { db, deviceId, type EventRecord, type GameRecord } from "./db";
 
 export async function flushSync() {
   if (!navigator.onLine) return;
-  const queued = await db.sync_queue.toArray();
-  const byGame = new Map<string, EventRecord[]>();
-  for (const item of queued) {
-    const list = byGame.get(item.game_id) ?? [];
-    list.push(item.event);
-    byGame.set(item.game_id, list);
+  const var_lstQueued = await db.sync_queue.toArray();
+  const var_dctByGame = new Map<string, EventRecord[]>();
+  for (const var_objItem of var_lstQueued) {
+    const var_lstEvents = var_dctByGame.get(var_objItem.game_id) ?? [];
+    var_lstEvents.push(var_objItem.event);
+    var_dctByGame.set(var_objItem.game_id, var_lstEvents);
   }
-  for (const [gameId, events] of byGame) {
-    const game = await db.games.get(gameId);
-    if (!game) continue;
+  for (const [var_strGameId, var_lstEvents] of var_dctByGame) {
+    const var_objGame = await db.games.get(var_strGameId);
+    if (!var_objGame) continue;
     try {
-      await api("/games", { method: "POST", body: JSON.stringify(gameBody(game)) });
-      const result = await api<{ accepted: string[]; duplicates: string[] }>("/games/sync", {
+      await api("/games", { method: "POST", body: JSON.stringify(gameBody(var_objGame)) });
+      const var_objResult = await api<{ accepted: string[]; duplicates: string[] }>("/games/sync", {
         method: "POST",
         body: JSON.stringify({
-          game_id: gameId,
-          events: events.map((event) => ({
+          game_id: var_strGameId,
+          events: var_lstEvents.map((event) => ({
             id: event.id,
             seq: event.seq,
             device_id: event.device_id,
@@ -30,8 +30,12 @@ export async function flushSync() {
           })),
         }),
       });
-      const done = new Set([...(result.accepted || []), ...(result.duplicates || [])]);
-      await db.sync_queue.where("game_id").equals(gameId).filter((item) => done.has(item.event.id)).delete();
+      const var_setDone = new Set([...(var_objResult.accepted || []), ...(var_objResult.duplicates || [])]);
+      await db.sync_queue
+        .where("game_id")
+        .equals(var_strGameId)
+        .filter((item) => var_setDone.has(item.event.id))
+        .delete();
     } catch {
       return;
     }
@@ -39,21 +43,27 @@ export async function flushSync() {
 }
 
 export async function finishMatch(game: { id: string }, result: "win" | "loss" | "draw", listName: string) {
-  const current = await db.games.get(game.id);
-  if (current) {
-    const event: EventRecord = {
+  const var_objCurrent = await db.games.get(game.id);
+  if (var_objCurrent) {
+    const var_objEvent: EventRecord = {
       id: crypto.randomUUID(),
       game_id: game.id,
-      seq: current.seq + 1,
+      seq: var_objCurrent.seq + 1,
       device_id: deviceId(),
       type: "game_ended",
       payload: { status: "finished", result, list_label: listName },
       created_at: new Date().toISOString(),
     };
     await db.transaction("rw", db.games, db.game_events, db.sync_queue, async () => {
-      await db.game_events.add(event);
-      await db.games.update(game.id, { seq: event.seq, status: "finished", result, listName, updatedAt: Date.now() });
-      await db.sync_queue.add({ game_id: game.id, event });
+      await db.game_events.add(var_objEvent);
+      await db.games.update(game.id, {
+        seq: var_objEvent.seq,
+        status: "finished",
+        result,
+        listName,
+        updatedAt: Date.now(),
+      });
+      await db.sync_queue.add({ game_id: game.id, event: var_objEvent });
     });
   }
   await flushSync();
@@ -63,8 +73,8 @@ export async function finishMatch(game: { id: string }, result: "win" | "loss" |
       body: JSON.stringify({ status: "finished", result, list_label: listName }),
     });
   } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 404) throw err;
+    const var_intStatus = (err as { status?: number }).status;
+    if (var_intStatus !== 404) throw err;
   }
 }
 
@@ -72,8 +82,8 @@ export async function deleteMatch(game: { id: string }) {
   try {
     await api(`/games/${game.id}`, { method: "DELETE", body: JSON.stringify({ confirm: "EXCLUIR" }) });
   } catch (err) {
-    const status = (err as { status?: number }).status;
-    if (status !== 404) throw err;
+    const var_intStatus = (err as { status?: number }).status;
+    if (var_intStatus !== 404) throw err;
   }
   await db.transaction("rw", db.games, db.game_events, db.sync_queue, async () => {
     await db.game_events.where("game_id").equals(game.id).delete();

@@ -11,7 +11,8 @@ import { deleteMatch, finishMatch, flushSync } from "./sync";
 import { EffectRow, ParseWarnings } from "./components";
 import { EventTimeline } from "./GameScreen";
 
-const RESULT_LABEL: Record<string, string> = { win: "Vitória", loss: "Derrota", draw: "Empate" };
+const con_dctResultLabel: Record<string, string> = { win: "Vitória", loss: "Derrota", draw: "Empate" };
+const RESULT_LABEL = con_dctResultLabel;
 
 const PHASE_LABEL: Record<string, string> = {
   round_start: "Início da rodada",
@@ -271,17 +272,21 @@ export function HomeScreen() {
         <section className="stack home-block" aria-label="Histórico de partidas">
           <div>
             <h2>Histórico</h2>
-            <p className="muted">Partidas finalizadas. Não travam a lista.</p>
+            <p className="muted">Partidas finalizadas com resultado. Não travam a exclusão da lista.</p>
           </div>
           <div className="grid-cards">
-            {pastGames.filter((game) => !openGames.some((open) => open.id === game.id)).map((game) => (
-                <article key={game.id} className="card list-tile">
+            {pastGames
+              .filter((game) => !openGames.some((open) => open.id === game.id))
+              .map((game) => (
+                <article key={game.id} className="card list-tile game-tile">
                   <span className="tile-kind">Histórico</span>
-                  <strong>Contra {game.opponentName || "oponente"}</strong>
+                  <strong>
+                    {con_dctResultLabel[game.result || ""] || "Resultado"} — contra {game.opponentName || "oponente"}
+                  </strong>
                   <dl className="tile-facts">
                     <div>
                       <dt>Resultado</dt>
-                      <dd>{RESULT_LABEL[game.result || ""] || "Não informado"}</dd>
+                      <dd>{con_dctResultLabel[game.result || ""] || "Não informado"}</dd>
                     </div>
                     <div>
                       <dt>Lista</dt>

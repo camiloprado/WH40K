@@ -1,6 +1,7 @@
 import type { Moved } from "./eligibility";
 
-export const PHASES = ["round_start", "command", "battle_shock", "movement", "shooting", "charge", "fight", "end_of_turn"] as const;
+const con_lstPhases = ["round_start", "command", "battle_shock", "movement", "shooting", "charge", "fight", "end_of_turn"] as const;
+export const PHASES = con_lstPhases;
 
 export type GameEvent = {
   id: string;
@@ -31,8 +32,9 @@ export type LiveUnit = {
   overrides: { key: string }[];
 };
 
-export const LANES = ["left", "center", "right", "home"] as const;
-export type Lane = (typeof LANES)[number];
+const con_lstLanes = ["left", "center", "right", "home"] as const;
+export const LANES = con_lstLanes;
+export type Lane = (typeof con_lstLanes)[number];
 
 export type ChoiceScope = "turn" | "round" | "battle";
 
@@ -86,24 +88,26 @@ export function zoneOf(unit: Pick<LiveUnit, "destroyed" | "in_reserves">): Zone 
 }
 
 export function applyEvents(events: GameEvent[]): Projection {
-  const ordered = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at) || a.device_id.localeCompare(b.device_id) || a.seq - b.seq);
-  const inactive = undone(ordered);
-  const state = empty();
-  for (const event of ordered) {
-    const skipped = inactive.has(event.id) || event.type === "undo";
-    if (!skipped) apply(state, event);
-    state.log.push({
-      id: event.id,
-      seq: event.seq,
-      type: event.type,
-      payload: event.payload || {},
-      round: state.round,
-      player: state.player,
-      phase: state.phase,
-      undone: inactive.has(event.id),
+  const var_lstOrdered = [...events].sort(
+    (a, b) => a.created_at.localeCompare(b.created_at) || a.device_id.localeCompare(b.device_id) || a.seq - b.seq,
+  );
+  const var_setInactive = undone(var_lstOrdered);
+  const var_objState = empty();
+  for (const var_objEvent of var_lstOrdered) {
+    const var_boolSkipped = var_setInactive.has(var_objEvent.id) || var_objEvent.type === "undo";
+    if (!var_boolSkipped) apply(var_objState, var_objEvent);
+    var_objState.log.push({
+      id: var_objEvent.id,
+      seq: var_objEvent.seq,
+      type: var_objEvent.type,
+      payload: var_objEvent.payload || {},
+      round: var_objState.round,
+      player: var_objState.player,
+      phase: var_objState.phase,
+      undone: var_setInactive.has(var_objEvent.id),
     });
   }
-  return state;
+  return var_objState;
 }
 
 function undone(events: GameEvent[]): Set<string> {

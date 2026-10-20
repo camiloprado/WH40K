@@ -16,6 +16,8 @@ O motor só sinaliza. Ele não impede o toque. Um override fica registrado no ev
 
 ## Como executar
 
+Checklist rápido: (1) Postgres no overlay de dev, (2) API em `127.0.0.1:18001`, (3) Vite em `http://127.0.0.1:5173`. Abrir só a API no navegador devolve 404 — a interface é o Vite.
+
 Credenciais e URL do banco vêm de `.env.example` (copie para `.env`). O Compose de desenvolvimento (`docker-compose.dev.yml`) publica portas locais alternativas para não conflitar com Postgres/API padrão na máquina:
 
 | Serviço | Endereço (dev overlay) |

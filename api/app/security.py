@@ -18,77 +18,86 @@ from app.config import get_settings
 from app.errors import err
 from app.models import SessionRow
 
-COOKIE = "__Host-session"
-PUBLIC_PATHS = {"/api/v1/health", "/api/v1/session", "/health"}
-_HITS: dict[str, list[float]] = defaultdict(list)
+con_strCookie = "__Host-session"
+con_setPublicPaths = {"/api/v1/health", "/api/v1/session", "/health"}
+con_dctHits: dict[str, list[float]] = defaultdict(list)
+
+# Contrato público do módulo.
+COOKIE = con_strCookie
+PUBLIC_PATHS = con_setPublicPaths
+_HITS = con_dctHits
 
 
 def allow(key: str, limit: int, window: float) -> bool:
-    now = time.monotonic()
-    rows = [stamp for stamp in _HITS[key] if now - stamp < window]
-    if len(rows) >= limit:
-        _HITS[key] = rows
+    var_fltNow = time.monotonic()
+    var_lstRows = [stamp for stamp in con_dctHits[key] if var_fltNow - stamp < window]
+    if len(var_lstRows) >= limit:
+        con_dctHits[key] = var_lstRows
         return False
-    rows.append(now)
-    _HITS[key] = rows
+    var_lstRows.append(var_fltNow)
+    con_dctHits[key] = var_lstRows
     return True
 
 
 def read_token_hash() -> str:
-    settings = get_settings()
-    path = Path(settings.token_hash_file)
-    if path.exists():
-        return path.read_text(encoding="utf-8").strip()
-    return settings.app_token_hash.strip()
+    var_objSettings = get_settings()
+    var_objPath = Path(var_objSettings.token_hash_file)
+    if var_objPath.exists():
+        return var_objPath.read_text(encoding="utf-8").strip()
+    return var_objSettings.app_token_hash.strip()
 
 
 def login(db: Session, token: str, user_agent: str | None, client: str) -> str:
-    digest = hashlib.sha256(token.encode()).hexdigest()
-    configured = read_token_hash()
-    expected = configured or hashlib.sha256(b"unset-token").hexdigest()
-    ok = hmac.compare_digest(digest, expected) and bool(configured)
-    if not ok:
+    var_strDigest = hashlib.sha256(token.encode()).hexdigest()
+    var_strConfigured = read_token_hash()
+    var_strExpected = var_strConfigured or hashlib.sha256(b"unset-token").hexdigest()
+    var_boolOk = hmac.compare_digest(var_strDigest, var_strExpected) and bool(var_strConfigured)
+    if not var_boolOk:
         if not allow(f"login-fail:{client}", 8, 600):
             err(429, "rate_limited", "Muitas tentativas")
         if get_settings().app_env != "test":
             time.sleep(0.05)
         err(401, "bad_token", "Token inválido")
-    raw = secrets.token_urlsafe(32)
-    now = datetime.now(timezone.utc)
+    var_strRaw = secrets.token_urlsafe(32)
+    var_objNow = datetime.now(timezone.utc)
     db.add(
         SessionRow(
-            token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+            token_hash=hashlib.sha256(var_strRaw.encode()).hexdigest(),
             user_agent=(user_agent or "")[:300] or None,
-            last_seen_at=now,
-            expires_at=now + timedelta(days=90),
+            last_seen_at=var_objNow,
+            expires_at=var_objNow + timedelta(days=90),
         )
     )
     db.flush()
-    return raw
+    return var_strRaw
 
 
 def logout(db: Session, raw: str | None) -> None:
     if not raw:
         return
-    digest = hashlib.sha256(raw.encode()).hexdigest()
-    db.execute(delete(SessionRow).where(SessionRow.token_hash == digest))
+    var_strDigest = hashlib.sha256(raw.encode()).hexdigest()
+    db.execute(delete(SessionRow).where(SessionRow.token_hash == var_strDigest))
 
 
 def require_session(request: Request, db: Session) -> SessionRow:
-    raw = request.cookies.get(COOKIE)
-    if not raw:
+    var_strRaw = request.cookies.get(con_strCookie)
+    if not var_strRaw:
         err(401, "session_required", "Sessão obrigatória")
-    digest = hashlib.sha256(raw.encode()).hexdigest()
-    row = db.scalar(select(SessionRow).where(SessionRow.token_hash == digest))
-    if row is None:
+    var_strDigest = hashlib.sha256(var_strRaw.encode()).hexdigest()
+    var_objRow = db.scalar(select(SessionRow).where(SessionRow.token_hash == var_strDigest))
+    if var_objRow is None:
         err(401, "bad_token", "Sessão inválida")
-    now = datetime.now(timezone.utc)
-    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
-    if expires < now:
+    var_objNow = datetime.now(timezone.utc)
+    var_objExpires = (
+        var_objRow.expires_at
+        if var_objRow.expires_at.tzinfo
+        else var_objRow.expires_at.replace(tzinfo=timezone.utc)
+    )
+    if var_objExpires < var_objNow:
         err(401, "session_expired", "Sessão expirada")
-    row.last_seen_at = now
-    row.expires_at = now + timedelta(days=90)
-    return row
+    var_objRow.last_seen_at = var_objNow
+    var_objRow.expires_at = var_objNow + timedelta(days=90)
+    return var_objRow
 
 
 def invalidate_all(db: Session) -> None:
@@ -97,28 +106,30 @@ def invalidate_all(db: Session) -> None:
 
 class SecurityMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-        host = request.headers.get("host", "")
-        hostname = host.split(":")[0].lower().strip("[]")
-        settings = get_settings()
-        extra = {item.strip().lower() for item in settings.extra_hosts.split(",") if item.strip()}
-        allowed = hostname in {"localhost", "127.0.0.1", *extra} or hostname.endswith(".ts.net")
-        if settings.app_env != "prod" and hostname == "testserver":
-            allowed = True
-        if not allowed:
+        var_strHost = request.headers.get("host", "")
+        var_strHostname = var_strHost.split(":")[0].lower().strip("[]")
+        var_objSettings = get_settings()
+        var_setExtra = {item.strip().lower() for item in var_objSettings.extra_hosts.split(",") if item.strip()}
+        var_boolAllowed = (
+            var_strHostname in {"localhost", "127.0.0.1", *var_setExtra} or var_strHostname.endswith(".ts.net")
+        )
+        if var_objSettings.app_env != "prod" and var_strHostname == "testserver":
+            var_boolAllowed = True
+        if not var_boolAllowed:
             return JSONResponse(
                 status_code=400,
                 content={"detail": "Host não permitido", "code": "host_not_allowed"},
             )
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            body = await request.body()
-            limit = 20 * 1024 * 1024 if request.url.path == "/api/v1/restore" else 204800
-            if len(body) > limit:
+            var_bytBody = await request.body()
+            var_intLimit = 20 * 1024 * 1024 if request.url.path == "/api/v1/restore" else 204800
+            if len(var_bytBody) > var_intLimit:
                 return JSONResponse(
                     status_code=413,
                     content={"detail": "Corpo grande demais", "code": "payload_too_large"},
                 )
-            media = request.headers.get("content-type", "")
-            if not media.startswith("application/json"):
+            var_strMedia = request.headers.get("content-type", "")
+            if not var_strMedia.startswith("application/json"):
                 return JSONResponse(
                     status_code=415,
                     content={"detail": "Use application/json", "code": "unsupported_media_type"},
@@ -128,8 +139,8 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                     status_code=403,
                     content={"detail": "Cabeçalho X-App ausente", "code": "csrf_header_missing"},
                 )
-        path = request.url.path.rstrip("/") or "/"
-        if path.startswith("/api/") and path not in PUBLIC_PATHS and COOKIE not in request.cookies:
+        var_strPath = request.url.path.rstrip("/") or "/"
+        if var_strPath.startswith("/api/") and var_strPath not in con_setPublicPaths and con_strCookie not in request.cookies:
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Sessão obrigatória", "code": "session_required"},

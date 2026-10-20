@@ -258,7 +258,7 @@ Cada ability é ligada aos seus `rule_effects`. Isso alimenta o `/turn-guide`, o
 | Shooting | `advanced` | `ASSAULT` (só armas ASSAULT ativas) |
 | Shooting | `fell_back` | regra que permite atirar após recuar |
 | Shooting | `on_action` | regra da ação |
-| Shooting | já atirou; engajada (o motor ainda usa a exceção da 10ª: PISTOL ou MONSTER/VEHICLE; a 11ª usa CLOSE-QUARTERS, com PISTOL equivalente) | — |
+| Shooting | já atirou; engajada: CLOSE-QUARTERS ou PISTOL (PISTOL conta como CLOSE-QUARTERS), sem BLAST no alvo engajado; MONSTER/VEHICLE ainda atiram normalmente; aviso de −1 para acertar | — |
 | Charge | `advanced` ou `fell_back` | regra que permite carregar |
 | Charge | `on_action`; já carregou | — |
 | Fight | não engajada e não carregou; já lutou | lutar de novo |

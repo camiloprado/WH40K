@@ -20,16 +20,16 @@ export type TargetProfile = {
 
 export function diceAverage(expr: string | null | undefined): number {
   if (!expr) return 0;
-  const token = expr.toUpperCase().replace(/\s/g, "");
-  const dice = token.match(/^(\d)?D([36])(?:\+(\d{1,2}))?$/);
-  if (dice) {
-    const count = Number(dice[1] || 1);
-    const faces = Number(dice[2]);
-    const bonus = Number(dice[3] || 0);
-    return count * ((faces + 1) / 2) + bonus;
+  const var_strToken = expr.toUpperCase().replace(/\s/g, "");
+  const var_objDice = var_strToken.match(/^(\d)?D([36])(?:\+(\d{1,2}))?$/);
+  if (var_objDice) {
+    const var_intCount = Number(var_objDice[1] || 1);
+    const var_intFaces = Number(var_objDice[2]);
+    const var_intBonus = Number(var_objDice[3] || 0);
+    return var_intCount * ((var_intFaces + 1) / 2) + var_intBonus;
   }
-  const plain = Number(token);
-  return Number.isFinite(plain) ? plain : 0;
+  const var_fltPlain = Number(var_strToken);
+  return Number.isFinite(var_fltPlain) ? var_fltPlain : 0;
 }
 
 function woundChance(strength: number, toughness: number): number {
@@ -41,19 +41,19 @@ function woundChance(strength: number, toughness: number): number {
 }
 
 export function expectedDamage(weapon: WeaponProfile, target: TargetProfile): number {
-  const attacks = diceAverage(weapon.attacks);
-  const damage = diceAverage(weapon.damage);
-  const skill = weapon.skill ?? 4;
-  const strength = weapon.strength ?? target.toughness;
-  const hit = Math.max(0, Math.min(1, (7 - skill) / 6));
-  const wound = woundChance(strength, target.toughness);
-  const needed = target.save - (weapon.ap ?? 0);
-  let saveFail = needed > 6 ? 1 : Math.max(0, 1 - (7 - Math.max(needed, 2)) / 6);
+  const var_fltAttacks = diceAverage(weapon.attacks);
+  const var_fltDamage = diceAverage(weapon.damage);
+  const var_intSkill = weapon.skill ?? 4;
+  const var_intStrength = weapon.strength ?? target.toughness;
+  const var_fltHit = Math.max(0, Math.min(1, (7 - var_intSkill) / 6));
+  const var_fltWound = woundChance(var_intStrength, target.toughness);
+  const var_intNeeded = target.save - (weapon.ap ?? 0);
+  let var_fltSaveFail = var_intNeeded > 6 ? 1 : Math.max(0, 1 - (7 - Math.max(var_intNeeded, 2)) / 6);
   if (target.invuln) {
-    const invulnFail = 1 - (7 - target.invuln) / 6;
-    saveFail = Math.min(saveFail, invulnFail);
+    const var_fltInvulnFail = 1 - (7 - target.invuln) / 6;
+    var_fltSaveFail = Math.min(var_fltSaveFail, var_fltInvulnFail);
   }
-  const fnpKeep = target.fnp ? 1 - (7 - target.fnp) / 6 : 1;
-  const perModel = attacks * hit * wound * saveFail * damage * fnpKeep;
-  return Math.round(perModel * (target.models ?? 1) * 10) / 10;
+  const var_fltFnpKeep = target.fnp ? 1 - (7 - target.fnp) / 6 : 1;
+  const var_fltPerModel = var_fltAttacks * var_fltHit * var_fltWound * var_fltSaveFail * var_fltDamage * var_fltFnpKeep;
+  return Math.round(var_fltPerModel * (target.models ?? 1) * 10) / 10;
 }

@@ -29,12 +29,20 @@ export type Eligibility = {
   destroyed: boolean;
 };
 
-const DONE: Record<string, { flag: keyof UnitSnapshot; label: string }> = {
+const con_dctPhaseDone: Record<string, { flag: keyof UnitSnapshot; label: string }> = {
   movement: { flag: "moved", label: "Já moveu" },
   shooting: { flag: "shot", label: "Já atirou" },
   charge: { flag: "charged", label: "Já carregou" },
   fight: { flag: "fought", label: "Já lutou" },
 };
+
+/** Compat: testes/legado podem referenciar DONE. */
+export const DONE = con_dctPhaseDone;
+
+const con_strCloseQuarters = "CLOSE-QUARTERS";
+const con_strPistol = "PISTOL";
+const con_strAssault = "ASSAULT";
+const con_strBlast = "BLAST";
 
 export function evaluateUnit(input: {
   phase: string;
@@ -43,112 +51,143 @@ export function evaluateUnit(input: {
   unitKeywords?: string[];
   effects?: RuleEffect[];
 }): Eligibility {
-  const weapons = input.weapons ?? [];
-  const names = weapons.map((item) => item.name);
-  const overrides = new Set((input.unit.overrides ?? []).map((item) => item.key));
-  const allows = new Set<string>();
-  const denies = new Set<string>();
-  const weaponFilters: string[] = [];
-  for (const effect of input.effects ?? []) {
-    if (!matches(effect.condition_json ?? {}, input)) continue;
-    if (!effect.restriction_key) continue;
-    if (effect.effect_kind === "allow") {
-      allows.add(effect.restriction_key);
-      const filter = keywordFilter(effect.condition_json);
-      if (filter) weaponFilters.push(filter);
+  const var_lstWeapons = input.weapons ?? [];
+  const var_lstNames = var_lstWeapons.map((item) => item.name);
+  const var_setOverrides = new Set((input.unit.overrides ?? []).map((item) => item.key));
+  const var_setAllows = new Set<string>();
+  const var_setDenies = new Set<string>();
+  const var_lstWeaponFilters: string[] = [];
+  for (const var_objEffect of input.effects ?? []) {
+    if (!matches(var_objEffect.condition_json ?? {}, input)) continue;
+    if (!var_objEffect.restriction_key) continue;
+    if (var_objEffect.effect_kind === "allow") {
+      var_setAllows.add(var_objEffect.restriction_key);
+      const var_strFilter = keywordFilter(var_objEffect.condition_json);
+      if (var_strFilter) var_lstWeaponFilters.push(var_strFilter);
     }
-    if (effect.effect_kind === "deny") denies.add(effect.restriction_key);
+    if (var_objEffect.effect_kind === "deny") var_setDenies.add(var_objEffect.restriction_key);
   }
-  const permitted = (key: string) => (allows.has(key) || overrides.has(key)) && !denies.has(key);
-  if (input.unit.destroyed || denies.has("destroyed")) {
+  const var_fnPermitted = (key: string) =>
+    (var_setAllows.has(key) || var_setOverrides.has(key)) && !var_setDenies.has(key);
+  if (input.unit.destroyed || var_setDenies.has("destroyed")) {
     return { status: "inactive", reasons: ["Destruída"], allowedWeapons: [], destroyed: true };
   }
-  if (input.phase === "shooting" && !hasRanged(weapons)) {
+  if (input.phase === "shooting" && !hasRanged(var_lstWeapons)) {
     return { status: "done", reasons: ["Sem arma de tiro"], allowedWeapons: [], destroyed: false };
   }
-  const doneEarly = phaseDone(input.phase, input.unit);
-  if (doneEarly) {
-    return { status: "done", reasons: [doneEarly], allowedWeapons: names, destroyed: false };
+  const var_strDoneEarly = phaseDone(input.phase, input.unit);
+  if (var_strDoneEarly) {
+    return { status: "done", reasons: [var_strDoneEarly], allowedWeapons: var_lstNames, destroyed: false };
   }
-  const reasons: string[] = [];
-  let allowed = names;
-  let inactive = false;
+  const var_lstReasons: string[] = [];
+  let var_lstAllowed = var_lstNames;
+  let var_boolInactive = false;
   if (input.phase === "shooting") {
-    if (input.unit.moved === "advanced" && !permitted("shoot_after_advance")) {
-      const assault = weapons.filter((item) => keywordsOf(item).includes("ASSAULT")).map((item) => item.name);
-      if (assault.length === 0) {
-        inactive = true;
-        reasons.push("Avançou — sem ASSAULT");
-        allowed = [];
+    if (input.unit.moved === "advanced" && !var_fnPermitted("shoot_after_advance")) {
+      const var_lstAssault = var_lstWeapons
+        .filter((item) => keywordsOf(item).includes(con_strAssault))
+        .map((item) => item.name);
+      if (var_lstAssault.length === 0) {
+        var_boolInactive = true;
+        var_lstReasons.push("Avançou — sem ASSAULT");
+        var_lstAllowed = [];
       } else {
-        allowed = assault;
-        reasons.push("Só armas ASSAULT");
+        var_lstAllowed = var_lstAssault;
+        var_lstReasons.push("Só armas ASSAULT");
       }
-    } else if (input.unit.moved === "advanced" && permitted("shoot_after_advance")) {
-      reasons.push("Permitido por regra");
-      if (weaponFilters.length) {
-        allowed = weapons.filter((item) => weaponFilters.every((key) => (item.keywords ?? []).includes(key))).map((item) => item.name);
-        if (allowed.length === 0) {
-          inactive = true;
-          reasons.push("Avançou — sem ASSAULT");
+    } else if (input.unit.moved === "advanced" && var_fnPermitted("shoot_after_advance")) {
+      var_lstReasons.push("Permitido por regra");
+      if (var_lstWeaponFilters.length) {
+        var_lstAllowed = var_lstWeapons
+          .filter((item) => var_lstWeaponFilters.every((key) => (item.keywords ?? []).includes(key)))
+          .map((item) => item.name);
+        if (var_lstAllowed.length === 0) {
+          var_boolInactive = true;
+          var_lstReasons.push("Avançou — sem ASSAULT");
         }
       }
     }
-    if (input.unit.moved === "fell_back" && !permitted("shoot_after_fall_back")) {
-      inactive = true;
-      reasons.push("Recuou");
-      allowed = [];
-    } else if (input.unit.moved === "fell_back") reasons.push("Permitido por regra");
-    if (input.unit.on_action && !permitted("shoot_on_action")) {
-      inactive = true;
-      reasons.push("Em ação");
-      allowed = [];
+    if (input.unit.moved === "fell_back" && !var_fnPermitted("shoot_after_fall_back")) {
+      var_boolInactive = true;
+      var_lstReasons.push("Recuou");
+      var_lstAllowed = [];
+    } else if (input.unit.moved === "fell_back") var_lstReasons.push("Permitido por regra");
+    if (input.unit.on_action && !var_fnPermitted("shoot_on_action")) {
+      var_boolInactive = true;
+      var_lstReasons.push("Em ação");
+      var_lstAllowed = [];
     }
-    const monster = (input.unitKeywords ?? []).some((item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE");
-    if (input.unit.engaged && !monster && !permitted("shoot_engaged")) {
-      const pistols = weapons.filter((item) => keywordsOf(item).includes("PISTOL")).map((item) => item.name);
-      if (pistols.length === 0) {
-        inactive = true;
-        reasons.push("Em combate");
-        allowed = [];
+    const var_boolMonsterVehicle = (input.unitKeywords ?? []).some(
+      (item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE",
+    );
+    if (input.unit.engaged && !var_boolMonsterVehicle && !var_fnPermitted("shoot_engaged")) {
+      const var_lstClose = var_lstWeapons
+        .filter((item) => isCloseQuarters(item))
+        .filter((item) => !keywordsOf(item).includes(con_strBlast))
+        .map((item) => item.name);
+      if (var_lstClose.length === 0) {
+        var_boolInactive = true;
+        var_lstReasons.push("Em combate");
+        var_lstAllowed = [];
       } else {
-        allowed = pistols;
-        reasons.push("Só armas PISTOL");
+        var_lstAllowed = var_lstClose;
+        var_lstReasons.push("Só CLOSE-QUARTERS / PISTOL (sem BLAST); -1 para acertar");
       }
     }
   }
   if (input.phase === "charge") {
     if (input.unit.engaged) {
-      inactive = true;
-      reasons.push("Já está em combate");
+      var_boolInactive = true;
+      var_lstReasons.push("Já está em combate");
     }
-    if ((input.unit.moved === "advanced" && !permitted("charge_after_advance")) || (input.unit.moved === "fell_back" && !permitted("charge_after_fall_back"))) {
-      inactive = true;
-      reasons.push(input.unit.moved === "advanced" ? "Avançou" : "Recuou");
-    } else if (input.unit.moved === "advanced" || input.unit.moved === "fell_back") reasons.push("Permitido por regra");
+    if (
+      (input.unit.moved === "advanced" && !var_fnPermitted("charge_after_advance")) ||
+      (input.unit.moved === "fell_back" && !var_fnPermitted("charge_after_fall_back"))
+    ) {
+      var_boolInactive = true;
+      var_lstReasons.push(input.unit.moved === "advanced" ? "Avançou" : "Recuou");
+    } else if (input.unit.moved === "advanced" || input.unit.moved === "fell_back") {
+      var_lstReasons.push("Permitido por regra");
+    }
     if (input.unit.on_action) {
-      inactive = true;
-      reasons.push("Em ação");
+      var_boolInactive = true;
+      var_lstReasons.push("Em ação");
     }
   }
-  if (input.phase === "fight" && !input.unit.engaged && !input.unit.charged && !permitted("fight_again")) {
-    inactive = true;
-    reasons.push("Não está em combate");
+  if (input.phase === "fight" && !input.unit.engaged && !input.unit.charged && !var_fnPermitted("fight_again")) {
+    var_boolInactive = true;
+    var_lstReasons.push("Não está em combate");
   }
-  if (input.unit.battle_shocked) reasons.push("Battle-shock: OC vira traço, não pode ser alvo de stratagem nem começar ou concluir ação");
-  const done = phaseDone(input.phase, input.unit);
-  if (done && !inactive) {
-    return { status: "done", reasons: [done, ...reasons], allowedWeapons: allowed, destroyed: false };
+  if (input.unit.battle_shocked) {
+    var_lstReasons.push(
+      "Battle-shock: OC vira traço, não pode ser alvo de stratagem nem começar ou concluir ação",
+    );
   }
-  if (inactive) return { status: "inactive", reasons, allowedWeapons: allowed, destroyed: false };
+  const var_strDone = phaseDone(input.phase, input.unit);
+  if (var_strDone && !var_boolInactive) {
+    return {
+      status: "done",
+      reasons: [var_strDone, ...var_lstReasons],
+      allowedWeapons: var_lstAllowed,
+      destroyed: false,
+    };
+  }
+  if (var_boolInactive) {
+    return { status: "inactive", reasons: var_lstReasons, allowedWeapons: var_lstAllowed, destroyed: false };
+  }
   if (input.unit.battle_shocked && input.phase !== "battle_shock") {
-    return { status: "warn", reasons, allowedWeapons: allowed, destroyed: false };
+    return { status: "warn", reasons: var_lstReasons, allowedWeapons: var_lstAllowed, destroyed: false };
   }
-  return { status: "active", reasons, allowedWeapons: allowed, destroyed: false };
+  return { status: "active", reasons: var_lstReasons, allowedWeapons: var_lstAllowed, destroyed: false };
 }
 
 function keywordsOf(weapon: WeaponRef): string[] {
   return (weapon.keywords ?? []).map((item) => item.toUpperCase());
+}
+
+function isCloseQuarters(weapon: WeaponRef): boolean {
+  const var_lstKeys = keywordsOf(weapon);
+  return var_lstKeys.includes(con_strCloseQuarters) || var_lstKeys.includes(con_strPistol);
 }
 
 function hasRanged(weapons: WeaponRef[]): boolean {
@@ -167,34 +206,39 @@ function phaseDone(phase: string, unit: UnitSnapshot): string | null {
 function keywordFilter(node: Record<string, unknown> | undefined): string | null {
   if (!node) return null;
   if (typeof node.weapon_keyword === "string") return node.weapon_keyword;
-  for (const key of ["all", "any"] as const) {
-    const children = node[key];
-    if (Array.isArray(children)) {
-      for (const child of children) {
-        const found = keywordFilter(child as Record<string, unknown>);
-        if (found) return found;
+  for (const var_strKey of ["all", "any"] as const) {
+    const var_lstChildren = node[var_strKey];
+    if (Array.isArray(var_lstChildren)) {
+      for (const var_objChild of var_lstChildren) {
+        const var_strFound = keywordFilter(var_objChild as Record<string, unknown>);
+        if (var_strFound) return var_strFound;
       }
     }
   }
   return null;
 }
 
-function matches(node: Record<string, unknown>, input: { phase: string; unit: UnitSnapshot; weapons?: WeaponRef[]; unitKeywords?: string[] }): boolean {
+function matches(
+  node: Record<string, unknown>,
+  input: { phase: string; unit: UnitSnapshot; weapons?: WeaponRef[]; unitKeywords?: string[] },
+): boolean {
   if (!node || Object.keys(node).length === 0) return true;
   if (Array.isArray(node.all)) return node.all.every((child) => matches(child as Record<string, unknown>, input));
   if (Array.isArray(node.any)) return node.any.some((child) => matches(child as Record<string, unknown>, input));
   if (node.not) return !matches(node.not as Record<string, unknown>, input);
-  const [key, expected] = Object.entries(node)[0];
-  if (key === "phase") return input.phase === expected;
-  if (key.startsWith("state.")) return input.unit[key.slice(6) as keyof UnitSnapshot] === expected;
-  if (key === "unit_keyword") return (input.unitKeywords ?? []).includes(String(expected));
-  if (key === "weapon_keyword") return (input.weapons ?? []).some((item) => (item.keywords ?? []).includes(String(expected)));
+  const [var_strKey, var_objExpected] = Object.entries(node)[0];
+  if (var_strKey === "phase") return input.phase === var_objExpected;
+  if (var_strKey.startsWith("state.")) return input.unit[var_strKey.slice(6) as keyof UnitSnapshot] === var_objExpected;
+  if (var_strKey === "unit_keyword") return (input.unitKeywords ?? []).includes(String(var_objExpected));
+  if (var_strKey === "weapon_keyword") {
+    return (input.weapons ?? []).some((item) => (item.keywords ?? []).includes(String(var_objExpected)));
+  }
   return true;
 }
 
 export function evaluateMany(count: number): number {
-  const started = performance.now();
-  const unit: UnitSnapshot = {
+  const var_fltStarted = performance.now();
+  const var_objUnit: UnitSnapshot = {
     moved: "advanced",
     shot: false,
     charged: false,
@@ -204,8 +248,12 @@ export function evaluateMany(count: number): number {
     battle_shocked: false,
     destroyed: false,
   };
-  for (let index = 0; index < count; index += 1) {
-    evaluateUnit({ phase: "shooting", unit, weapons: [{ name: "Claws", keywords: index % 2 ? ["ASSAULT"] : [] }] });
+  for (let var_intIndex = 0; var_intIndex < count; var_intIndex += 1) {
+    evaluateUnit({
+      phase: "shooting",
+      unit: var_objUnit,
+      weapons: [{ name: "Claws", keywords: var_intIndex % 2 ? ["ASSAULT"] : [] }],
+    });
   }
-  return performance.now() - started;
+  return performance.now() - var_fltStarted;
 }

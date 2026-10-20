@@ -67,7 +67,7 @@ describe("elegibilidade", () => {
     expect(overridden.status).toBe("active");
   });
 
-  it("engajada não carrega e só atira de pistol", () => {
+  it("engajada não carrega e só atira CLOSE-QUARTERS / PISTOL", () => {
     const engaged = base({ engaged: true });
     expect(evaluateUnit({ phase: "charge", unit: engaged }).status).toBe("inactive");
     expect(evaluateUnit({ phase: "charge", unit: engaged }).reasons).toContain("Já está em combate");
@@ -84,6 +84,20 @@ describe("elegibilidade", () => {
     });
     expect(pistol.status).toBe("active");
     expect(pistol.allowedWeapons).toEqual(["Lash"]);
+    expect(pistol.reasons.some((item) => item.includes("CLOSE-QUARTERS"))).toBe(true);
+    const close = evaluateUnit({
+      phase: "shooting",
+      unit: engaged,
+      weapons: [{ name: "Bolt", kind: "ranged", keywords: ["CLOSE-QUARTERS"] }],
+    });
+    expect(close.status).toBe("active");
+    expect(close.allowedWeapons).toEqual(["Bolt"]);
+    const blast = evaluateUnit({
+      phase: "shooting",
+      unit: engaged,
+      weapons: [{ name: "Grenade", kind: "ranged", keywords: ["PISTOL", "BLAST"] }],
+    });
+    expect(blast.status).toBe("inactive");
   });
 
   it("unidade sem arma de tiro já conta como tendo atirado", () => {

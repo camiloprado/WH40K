@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-PHASES = {
+con_setPhases = {
     "deployment",
     "round_start",
     "command",
@@ -12,7 +12,7 @@ PHASES = {
     "end_of_turn",
     "any",
 }
-STATE_FIELDS = {
+con_setStateFields = {
     "moved",
     "shot",
     "charged",
@@ -24,7 +24,7 @@ STATE_FIELDS = {
     "in_reserves",
     "below_half",
 }
-FACT_KEYS = {
+con_setFactKeys = {
     "phase",
     "turn_owner",
     "unit_keyword",
@@ -33,6 +33,11 @@ FACT_KEYS = {
     "game.shadow_of_chaos",
     "game.round",
 }
+
+# Compatibilidade com imports existentes (contrato público do módulo).
+PHASES = con_setPhases
+STATE_FIELDS = con_setStateFields
+FACT_KEYS = con_setFactKeys
 
 
 class ConditionError(ValueError):
@@ -47,31 +52,32 @@ def validate_condition(node: object, depth: int = 1, counter: list[int] | None =
     if not isinstance(node, dict):
         raise ConditionError("condition_json precisa ser objeto")
     counter[0] += 1
-    if depth > 5 or counter[0] > 20:
+    var_intDepth = depth
+    if var_intDepth > 5 or counter[0] > 20:
         raise ConditionError("condition_json excede o limite")
     if "all" in node or "any" in node:
-        key = "all" if "all" in node else "any"
-        if len(node) != 1 or not isinstance(node[key], list) or not node[key]:
+        var_strKey = "all" if "all" in node else "any"
+        if len(node) != 1 or not isinstance(node[var_strKey], list) or not node[var_strKey]:
             raise ConditionError("combinador inválido")
-        for child in node[key]:
-            validate_condition(child, depth + 1, counter)
+        for var_objChild in node[var_strKey]:
+            validate_condition(var_objChild, var_intDepth + 1, counter)
         return
     if "not" in node:
         if len(node) != 1:
             raise ConditionError("not inválido")
-        validate_condition(node["not"], depth + 1, counter)
+        validate_condition(node["not"], var_intDepth + 1, counter)
         return
     if len(node) != 1:
         raise ConditionError("fato inválido")
-    key, value = next(iter(node.items()))
-    if key.startswith("state."):
-        field = key.split(".", 1)[1]
-        if field not in STATE_FIELDS:
+    var_strKey, var_objValue = next(iter(node.items()))
+    if var_strKey.startswith("state."):
+        var_strField = var_strKey.split(".", 1)[1]
+        if var_strField not in con_setStateFields:
             raise ConditionError("estado desconhecido")
         return
-    if key not in FACT_KEYS:
+    if var_strKey not in con_setFactKeys:
         raise ConditionError("fato desconhecido")
-    if key == "phase" and value not in PHASES:
+    if var_strKey == "phase" and var_objValue not in con_setPhases:
         raise ConditionError("fase inválida")
 
 
@@ -81,20 +87,20 @@ def matches(node: object, facts: dict) -> bool:
     if not isinstance(node, dict):
         return False
     if "all" in node:
-        return all(matches(child, facts) for child in node["all"])
+        return all(matches(var_objChild, facts) for var_objChild in node["all"])
     if "any" in node:
-        return any(matches(child, facts) for child in node["any"])
+        return any(matches(var_objChild, facts) for var_objChild in node["any"])
     if "not" in node:
         return not matches(node["not"], facts)
-    key, expected = next(iter(node.items()))
-    if key.startswith("state."):
-        return facts.get("state", {}).get(key.split(".", 1)[1]) == expected
-    if key == "unit_keyword":
-        return expected in facts.get("unit_keywords", [])
-    if key == "weapon_keyword":
-        return expected in facts.get("weapon_keywords", [])
-    if key == "game.shadow_of_chaos":
-        return bool(facts.get("shadow")) == bool(expected)
-    if key == "game.round":
-        return facts.get("round") == expected
-    return facts.get(key) == expected
+    var_strKey, var_objExpected = next(iter(node.items()))
+    if var_strKey.startswith("state."):
+        return facts.get("state", {}).get(var_strKey.split(".", 1)[1]) == var_objExpected
+    if var_strKey == "unit_keyword":
+        return var_objExpected in facts.get("unit_keywords", [])
+    if var_strKey == "weapon_keyword":
+        return var_objExpected in facts.get("weapon_keywords", [])
+    if var_strKey == "game.shadow_of_chaos":
+        return bool(facts.get("shadow")) == bool(var_objExpected)
+    if var_strKey == "game.round":
+        return facts.get("round") == var_objExpected
+    return facts.get(var_strKey) == var_objExpected
