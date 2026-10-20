@@ -2,7 +2,7 @@ from functools import lru_cache
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-HEAD_REVISION = "0012_game_result"
+HEAD_REVISION = "0013_shadow_phase"
 
 
 class Settings(BaseSettings):

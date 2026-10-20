@@ -615,11 +615,15 @@ def _rebuild(db: Session, game: Game) -> None:
                 id=uuid.uuid4(),
                 game_id=game.id,
                 round=item["round"],
-                player=item["player"],
+                player=item.get("player") or "me",
+                turn_player=item.get("turn_player") or item.get("player") or "me",
+                phase=item.get("phase") or "command",
                 state_key="shadow_of_chaos",
-                objectives_controlled=item["objectives_controlled"],
-                whole_board=item["whole_board"],
-                value=item["value"],
+                objectives_controlled=item.get("objectives_controlled"),
+                whole_board=item.get("whole_board"),
+                nml_in_shadow=item.get("nml_in_shadow"),
+                opp_dz_in_shadow=item.get("opp_dz_in_shadow"),
+                value=item.get("value") or {},
             )
         )
 
@@ -695,6 +699,10 @@ def game_detail(db: Session, game: Game) -> dict:
             {
                 "round": item.round,
                 "player": item.player,
+                "turn_player": item.turn_player or item.player,
+                "phase": item.phase or "command",
+                "nml_in_shadow": item.nml_in_shadow,
+                "opp_dz_in_shadow": item.opp_dz_in_shadow,
                 "objectives_controlled": item.objectives_controlled,
                 "whole_board": item.whole_board,
             }

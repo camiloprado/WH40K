@@ -275,11 +275,32 @@ def _apply(state: dict, event: dict) -> None:
             state["vp"][player] = sum(item["vp"] for item in state["scores"] if item["player"] == player)
         return
     if kind == "shadow_set":
-        player = payload.get("player") or state["player"]
+        var_boolLegacy = "whole_board" in payload or "objectives_controlled" in payload
+        var_strPhase = str(payload.get("phase") or ("command" if var_boolLegacy else state["phase"]))
+        var_strTurn = str(payload.get("turn_player") or state["player"])
+        var_boolNml = bool(payload.get("nml_in_shadow"))
+        var_boolOpp = bool(payload.get("opp_dz_in_shadow"))
+        if var_boolLegacy and payload.get("nml_in_shadow") is None and payload.get("opp_dz_in_shadow") is None:
+            var_boolNml = bool(payload.get("whole_board"))
+            var_boolOpp = bool(payload.get("whole_board"))
+            state["warnings"].append("shadow_legacy")
+        else:
+            if payload.get("nml_total") is not None and payload.get("nml_controlled") is not None:
+                var_intTotal = int(payload["nml_total"])
+                var_intCtrl = int(payload["nml_controlled"])
+                var_boolNml = var_intTotal > 0 and var_intCtrl * 2 >= var_intTotal
+            if payload.get("opp_dz_total") is not None and payload.get("opp_dz_controlled") is not None:
+                var_intTotal = int(payload["opp_dz_total"])
+                var_intCtrl = int(payload["opp_dz_controlled"])
+                var_boolOpp = var_intTotal > 0 and var_intCtrl * 2 >= var_intTotal
         row = {
             "round": state["round"],
-            "player": player,
+            "player": payload.get("player") or "me",
+            "turn_player": var_strTurn,
+            "phase": var_strPhase,
             "state_key": "shadow_of_chaos",
+            "nml_in_shadow": var_boolNml,
+            "opp_dz_in_shadow": var_boolOpp,
             "objectives_controlled": payload.get("objectives_controlled"),
             "whole_board": payload.get("whole_board"),
             "value": payload.get("value") or {},
@@ -287,7 +308,11 @@ def _apply(state: dict, event: dict) -> None:
         state["shadow"] = [
             item
             for item in state["shadow"]
-            if not (item["round"] == row["round"] and item["player"] == player)
+            if not (
+                item["round"] == row["round"]
+                and item.get("turn_player") == var_strTurn
+                and item.get("phase") == var_strPhase
+            )
         ]
         state["shadow"].append(row)
         return

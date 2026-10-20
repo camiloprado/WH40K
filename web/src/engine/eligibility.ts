@@ -44,12 +44,15 @@ const con_strPistol = "PISTOL";
 const con_strAssault = "ASSAULT";
 const con_strBlast = "BLAST";
 
+export type GameFacts = { round?: number; shadow?: string[] };
+
 export function evaluateUnit(input: {
   phase: string;
   unit: UnitSnapshot;
   weapons?: WeaponRef[];
   unitKeywords?: string[];
   effects?: RuleEffect[];
+  game?: GameFacts;
 }): Eligibility {
   const var_lstWeapons = input.weapons ?? [];
   const var_lstNames = var_lstWeapons.map((item) => item.name);
@@ -243,7 +246,13 @@ function keywordFilter(node: Record<string, unknown> | undefined): string | null
 
 function matches(
   node: Record<string, unknown>,
-  input: { phase: string; unit: UnitSnapshot; weapons?: WeaponRef[]; unitKeywords?: string[] },
+  input: {
+    phase: string;
+    unit: UnitSnapshot;
+    weapons?: WeaponRef[];
+    unitKeywords?: string[];
+    game?: GameFacts;
+  },
 ): boolean {
   if (!node || Object.keys(node).length === 0) return true;
   if (Array.isArray(node.all)) return node.all.every((child) => matches(child as Record<string, unknown>, input));
@@ -256,6 +265,14 @@ function matches(
   if (var_strKey === "weapon_keyword") {
     return (input.weapons ?? []).some((item) => (item.keywords ?? []).includes(String(var_objExpected)));
   }
+  if (var_strKey === "game.round") return input.game?.round === var_objExpected;
+  if (var_strKey === "game.shadow_of_chaos") {
+    const var_lstAreas = input.game?.shadow ?? [];
+    if (var_objExpected === true) return var_lstAreas.length > 0;
+    if (var_objExpected === false) return var_lstAreas.length === 0;
+    return var_lstAreas.includes(String(var_objExpected));
+  }
+  if (var_strKey.startsWith("game.")) return false;
   return true;
 }
 

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { applyEvents, isChoiceActive, type GameEvent } from "./project";
+import { applyEvents, isChoiceActive, shadowNow, type GameEvent } from "./project";
 
 function ev(seq: number, type: string, payload: Record<string, unknown>, at: string): GameEvent {
   return { id: `00000000-0000-4000-8000-${String(seq).padStart(12, "0")}`, seq, device_id: "device-a", type, payload, created_at: at };
@@ -57,6 +57,26 @@ it("mantém battle-shock até passar no teste", () => {
     { ...ev(seq + 1, "undo", { undoes_event_id: pass.id }, "2026-10-15T12:02:01Z"), undoes_event_id: pass.id },
   ]);
   expect(undone.live[1].battle_shocked).toBe(true);
+});
+
+it("Shadow por fase e legado whole_board", () => {
+  const start = ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z");
+  const legacy = applyEvents([
+    start,
+    ev(2, "shadow_set", { player: "me", objectives_controlled: 2, whole_board: true }, "2026-10-15T12:00:01Z"),
+  ]);
+  expect(legacy.warnings).toContain("shadow_legacy");
+  expect(legacy.shadow[0].phase).toBe("command");
+  expect(legacy.shadow[0].nml_in_shadow).toBe(true);
+  const phased = applyEvents([
+    start,
+    ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+    ev(3, "shadow_set", { nml_controlled: 2, nml_total: 4, opp_dz_controlled: 0, opp_dz_total: 1 }, "2026-10-15T12:00:02Z"),
+  ]);
+  expect(phased.shadow[0].nml_in_shadow).toBe(true);
+  expect(phased.shadow[0].opp_dz_in_shadow).toBe(false);
+  expect(shadowNow(phased).known).toBe(true);
+  expect(shadowNow(phased).nml).toBe(true);
 });
 
 it("guarda a faixa entre turnos e troca a escolha do efeito no mesmo turno", () => {

@@ -61,13 +61,40 @@ export type Projection = {
   stratagem_uses: { stratagem_name: string; cp_spent: number; limit_overridden: boolean; phase: string; round: number; player: string }[];
   objectives: { objective_label: string; controller: string; round: number }[];
   scores: { player: string; kind: string; label: string; vp: number; round: number }[];
-  shadow: { round: number; player: string; objectives_controlled: number | null; whole_board: boolean | null }[];
+  shadow: {
+    round: number;
+    turn_player: string;
+    phase: string;
+    nml_in_shadow: boolean;
+    opp_dz_in_shadow: boolean;
+    /** legado */
+    player?: string;
+    objectives_controlled?: number | null;
+    whole_board?: boolean | null;
+  }[];
   warnings: string[];
   attachments: any[];
   choices: Choice[];
   log: LogEntry[];
   cpLedger: { round: number; turn_player: string; phase: string; player: string; reason: string; delta: number }[];
 };
+
+export type ShadowNow = { own_dz: true; nml: boolean; opp_dz: boolean; known: boolean };
+
+export function shadowNow(projection: Projection): ShadowNow {
+  const var_objRow = projection.shadow.find(
+    (item) =>
+      item.round === projection.round &&
+      item.turn_player === projection.player &&
+      item.phase === projection.phase,
+  );
+  return {
+    own_dz: true,
+    nml: var_objRow?.nml_in_shadow ?? false,
+    opp_dz: var_objRow?.opp_dz_in_shadow ?? false,
+    known: !!var_objRow,
+  };
+}
 
 export type LogEntry = {
   id: string;
@@ -306,11 +333,37 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "shadow_set") {
-    const player = payload.player || state.player;
-    state.shadow = state.shadow.filter((item) => !(item.round === state.round && item.player === player));
+    const var_boolLegacy = payload.whole_board !== undefined || payload.objectives_controlled !== undefined;
+    const var_strPhase = String(payload.phase || (var_boolLegacy ? "command" : state.phase));
+    const var_strTurn = String(payload.turn_player || state.player);
+    let var_boolNml = Boolean(payload.nml_in_shadow);
+    let var_boolOpp = Boolean(payload.opp_dz_in_shadow);
+    if (var_boolLegacy && payload.nml_in_shadow === undefined && payload.opp_dz_in_shadow === undefined) {
+      var_boolNml = Boolean(payload.whole_board);
+      var_boolOpp = Boolean(payload.whole_board);
+      state.warnings.push("shadow_legacy");
+    } else {
+      if (payload.nml_total != null && payload.nml_controlled != null) {
+        const var_intTotal = Number(payload.nml_total);
+        const var_intCtrl = Number(payload.nml_controlled);
+        var_boolNml = var_intTotal > 0 && var_intCtrl * 2 >= var_intTotal;
+      }
+      if (payload.opp_dz_total != null && payload.opp_dz_controlled != null) {
+        const var_intTotal = Number(payload.opp_dz_total);
+        const var_intCtrl = Number(payload.opp_dz_controlled);
+        var_boolOpp = var_intTotal > 0 && var_intCtrl * 2 >= var_intTotal;
+      }
+    }
+    state.shadow = state.shadow.filter(
+      (item) => !(item.round === state.round && item.turn_player === var_strTurn && item.phase === var_strPhase),
+    );
     state.shadow.push({
       round: state.round,
-      player,
+      turn_player: var_strTurn,
+      phase: var_strPhase,
+      nml_in_shadow: var_boolNml,
+      opp_dz_in_shadow: var_boolOpp,
+      player: payload.player || "me",
       objectives_controlled: payload.objectives_controlled ?? null,
       whole_board: payload.whole_board ?? null,
     });

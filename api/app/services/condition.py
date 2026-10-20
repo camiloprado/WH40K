@@ -100,7 +100,18 @@ def matches(node: object, facts: dict) -> bool:
     if var_strKey == "weapon_keyword":
         return var_objExpected in facts.get("weapon_keywords", [])
     if var_strKey == "game.shadow_of_chaos":
-        return bool(facts.get("shadow")) == bool(var_objExpected)
+        var_lstAreas = list(facts.get("shadow_areas") or [])
+        if not var_lstAreas and "shadow" in facts and not isinstance(facts.get("shadow"), list):
+            if var_objExpected is True:
+                return bool(facts.get("shadow"))
+            if var_objExpected is False:
+                return not bool(facts.get("shadow"))
+            return False
+        if var_objExpected is True:
+            return bool(var_lstAreas)
+        if var_objExpected is False:
+            return not var_lstAreas
+        return str(var_objExpected) in var_lstAreas
     if var_strKey == "game.round":
         return facts.get("round") == var_objExpected
     return facts.get(var_strKey) == var_objExpected
