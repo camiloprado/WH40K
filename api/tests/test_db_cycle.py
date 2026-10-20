@@ -40,7 +40,7 @@ def _client() -> TestClient:
     response = client.post("/api/v1/session", json={"token": TOKEN}, headers={"X-App": "wh40k"})
     assert response.status_code == 200, response.text
     raw = response.headers["set-cookie"].split(";", 1)[0].split("=", 1)[1]
-    client.headers.update({"X-App": "wh40k", "Cookie": f"__Host-session={raw}"})
+    client.headers.update({"X-App": "wh40k", "Cookie": f"session={raw}"})
     return client
 
 

@@ -37,7 +37,7 @@ from app.models import (
     Weapon,
     WeaponCheckMark,
 )
-from app.security import COOKIE, allow, login, logout, require_session
+from app.security import allow, cookie_name, cookie_secure, login, logout, read_session_raw, require_session
 from app.services.backup import export_backup, restore_backup
 from app.services.bsdata import fetch as bsdata_fetch
 from app.services.bsdata import sync as bsdata_sync
@@ -160,14 +160,25 @@ def health(database: Session = Depends(db_session)):
 @router.post("/session")
 def open_session(body: TokenIn, request: Request, response: Response, database: Session = Depends(db_session)):
     raw = login(database, body.token, request.headers.get("user-agent"), request.client.host if request.client else "local")
-    response.set_cookie(COOKIE, raw, max_age=30 * 24 * 3600, httponly=True, secure=True, samesite="strict", path="/")
+    var_strName = cookie_name()
+    var_boolSecure = cookie_secure()
+    response.set_cookie(
+        var_strName,
+        raw,
+        max_age=30 * 24 * 3600,
+        httponly=True,
+        secure=var_boolSecure,
+        samesite="strict",
+        path="/",
+    )
     return {"ok": True}
 
 
 @router.delete("/session")
 def close_session(request: Request, response: Response, database: Session = Depends(db_session), _s=Depends(authed)):
-    logout(database, request.cookies.get(COOKIE))
-    response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+    logout(database, read_session_raw(request))
+    var_strName = cookie_name()
+    response.delete_cookie(var_strName, path="/", secure=cookie_secure(), httponly=True, samesite="strict")
     return {"ok": True}
 
 
@@ -176,7 +187,8 @@ def close_all_sessions(response: Response, database: Session = Depends(db_sessio
     from app.security import invalidate_all
 
     invalidate_all(database)
-    response.delete_cookie(COOKIE, path="/", secure=True, httponly=True, samesite="strict")
+    var_strName = cookie_name()
+    response.delete_cookie(var_strName, path="/", secure=cookie_secure(), httponly=True, samesite="strict")
     return {"ok": True}
 
 

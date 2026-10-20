@@ -18,14 +18,36 @@ from app.config import get_settings
 from app.errors import err
 from app.models import SessionRow
 
-con_strCookie = "__Host-session"
+con_strCookieProd = "__Host-session"
+con_strCookieDev = "session"
 con_setPublicPaths = {"/api/v1/health", "/api/v1/session", "/health"}
 con_dctHits: dict[str, list[float]] = defaultdict(list)
 
-# Contrato público do módulo.
-COOKIE = con_strCookie
+# Contrato público do módulo (COOKIE = nome em prod; em dev/test use cookie_name()).
+COOKIE = con_strCookieProd
 PUBLIC_PATHS = con_setPublicPaths
 _HITS = con_dctHits
+
+
+def cookie_name(env: str | None = None) -> str:
+    """DEV1: em prod __Host-session; em dev/test session (HTTP local)."""
+    var_strEnv = env if env is not None else get_settings().app_env
+    return con_strCookieProd if var_strEnv == "prod" else con_strCookieDev
+
+
+def cookie_secure(env: str | None = None) -> bool:
+    var_strEnv = env if env is not None else get_settings().app_env
+    return var_strEnv == "prod"
+
+
+def read_session_raw(request: Request) -> str | None:
+    """Lê o cookie de sessão pelo nome do ambiente; aceita o outro nome só em migração de aba."""
+    var_strName = cookie_name()
+    var_strRaw = request.cookies.get(var_strName)
+    if var_strRaw:
+        return var_strRaw
+    var_strAlt = con_strCookieDev if var_strName == con_strCookieProd else con_strCookieProd
+    return request.cookies.get(var_strAlt)
 
 
 def allow(key: str, limit: int, window: float) -> bool:
@@ -80,7 +102,7 @@ def logout(db: Session, raw: str | None) -> None:
 
 
 def require_session(request: Request, db: Session) -> SessionRow:
-    var_strRaw = request.cookies.get(con_strCookie)
+    var_strRaw = read_session_raw(request)
     if not var_strRaw:
         err(401, "session_required", "Sessão obrigatória")
     var_strDigest = hashlib.sha256(var_strRaw.encode()).hexdigest()
@@ -149,7 +171,11 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                     content={"detail": "Cabeçalho X-App ausente", "code": "csrf_header_missing"},
                 )
         var_strPath = request.url.path.rstrip("/") or "/"
-        if var_strPath.startswith("/api/") and var_strPath not in con_setPublicPaths and con_strCookie not in request.cookies:
+        if (
+            var_strPath.startswith("/api/")
+            and var_strPath not in con_setPublicPaths
+            and read_session_raw(request) is None
+        ):
             return JSONResponse(
                 status_code=401,
                 content={"detail": "Sessão obrigatória", "code": "session_required"},
