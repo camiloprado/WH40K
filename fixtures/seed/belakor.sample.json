@@ -1,0 +1,12 @@
+{
+  "rows": [
+    {
+      "phase": "command",
+      "timing": "start",
+      "text": "Lembrete pessoal: anotar quantos objetivos estão em Shadow antes de gastar CP.",
+      "owner_label": "Be'lakor",
+      "owner": {"kind": "general", "name": "Be'lakor"},
+      "is_hypothesis": true
+    }
+  ]
+}

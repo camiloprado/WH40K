@@ -1,0 +1,291 @@
+{
+  "roster": {
+    "name": "O Banquete Podre",
+    "generatedBy": "https://newrecruit.eu",
+    "gameSystemName": "Warhammer 40,000 11th Edition",
+    "costs": [{"name": "pts", "value": 1180}],
+    "costLimits": [{"name": "pts", "value": 2000}],
+    "forces": [
+      {
+        "name": "Army Roster",
+        "catalogueName": "Chaos - Chaos Daemons",
+        "selections": [
+          {
+            "name": "Battle Size",
+            "type": "upgrade",
+            "categories": [{"name": "Configuration"}],
+            "selections": [{"name": "Strike Force (2000 Point limit)", "type": "upgrade"}]
+          },
+          {
+            "name": "Detachment",
+            "type": "upgrade",
+            "categories": [{"name": "Configuration"}],
+            "selections": [
+              {
+                "name": "Daemonic Incursion",
+                "type": "upgrade",
+                "group": "Detachment",
+                "rules": [{"name": "Warp Rifts", "description": "SHOULD BE DROPPED"}]
+              }
+            ]
+          },
+          {
+            "name": "Force Disposition",
+            "type": "upgrade",
+            "categories": [{"name": "Configuration"}],
+            "selections": [{"name": "Disruption", "type": "upgrade", "group": "Force Disposition"}]
+          },
+          {
+            "name": "Show/Hide Options",
+            "type": "upgrade",
+            "categories": [{"name": "Configuration"}],
+            "selections": [{"name": "Legends are visible", "type": "upgrade"}]
+          },
+          {
+            "id": "n3obwh",
+            "name": "Shalaxi Helbane",
+            "type": "model",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 315}],
+            "categories": [{"name": "Character"}, {"name": "Epic Hero"}, {"name": "Monster"}],
+            "rules": [{"name": "Feel No Pain 4+", "description": "SHOULD BE DROPPED"}],
+            "profiles": [
+              {
+                "name": "Shalaxi Helbane",
+                "typeName": "Unit",
+                "characteristics": [
+                  {"name": "M", "$text": "14\""},
+                  {"name": "T", "$text": "10"},
+                  {"name": "Sv", "$text": "3+"},
+                  {"name": "W", "$text": "20"},
+                  {"name": "LD", "$text": "6+"},
+                  {"name": "OC", "$text": "5"},
+                  {"name": "InSv", "$text": "4+"},
+                  {"name": "Base", "$text": "100mm"}
+                ]
+              },
+              {
+                "name": "No Prey Can Evade",
+                "typeName": "Abilities",
+                "characteristics": [{"name": "Description", "$text": "SHOULD BE DROPPED"}]
+              },
+              {
+                "name": "Leader",
+                "typeName": "Abilities",
+                "characteristics": [{"name": "Description", "$text": "SHOULD BE DROPPED"}]
+              }
+            ],
+            "selections": [
+              {
+                "name": "Warlord",
+                "type": "upgrade",
+                "categories": [{"name": "Warlord"}]
+              },
+              {
+                "name": "Pavane of Slaanesh",
+                "type": "upgrade",
+                "profiles": [
+                  {
+                    "name": "➤ Pavane of Slaanesh - witchfire",
+                    "typeName": "Ranged Weapons",
+                    "characteristics": [
+                      {"name": "Range", "$text": "18\""},
+                      {"name": "A", "$text": "D6"},
+                      {"name": "BS", "$text": "2+"},
+                      {"name": "S", "$text": "9"},
+                      {"name": "AP", "$text": "-1"},
+                      {"name": "D", "$text": "D3"},
+                      {"name": "Keywords", "$text": "Psychic"}
+                    ]
+                  },
+                  {
+                    "name": "➤ Pavane of Slaanesh - focused witchfire",
+                    "typeName": "Ranged Weapons",
+                    "characteristics": [
+                      {"name": "Range", "$text": "18\""},
+                      {"name": "A", "$text": "D6"},
+                      {"name": "BS", "$text": "2+"},
+                      {"name": "S", "$text": "9"},
+                      {"name": "AP", "$text": "-2"},
+                      {"name": "D", "$text": "D3"},
+                      {"name": "Keywords", "$text": "Hazardous, Psychic"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "uyo2jnj",
+            "name": "Great Unclean One",
+            "type": "model",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 265}],
+            "categories": [{"name": "Character"}, {"name": "Monster"}],
+            "selections": [
+              {
+                "name": "The Endless Gift",
+                "type": "upgrade",
+                "group": "Enhancements",
+                "costs": [{"name": "pts", "value": 30}, {"name": "Enhancements", "value": 1}]
+              },
+              {
+                "name": "Putrid vomit",
+                "type": "upgrade",
+                "profiles": [
+                  {
+                    "name": "Putrid vomit",
+                    "typeName": "Ranged Weapons",
+                    "characteristics": [
+                      {"name": "Range", "$text": "12\""},
+                      {"name": "A", "$text": "D6+3"},
+                      {"name": "BS", "$text": "N/A"},
+                      {"name": "S", "$text": "5"},
+                      {"name": "AP", "$text": "-2"},
+                      {"name": "D", "$text": "1"},
+                      {"name": "Keywords", "$text": "Ignores Cover, Torrent"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "pugz86s",
+            "name": "Poxbringer",
+            "type": "model",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 60}],
+            "categories": [{"name": "Character"}, {"name": "Infantry"}, {"name": "Leader"}],
+            "associations": [{"type": "outgoing", "to": "5szixjw", "name": "Leading", "action": "group"}],
+            "selections": [
+              {
+                "name": "Foul balesword",
+                "type": "upgrade",
+                "profiles": [
+                  {
+                    "name": "Foul balesword",
+                    "typeName": "Melee Weapons",
+                    "characteristics": [
+                      {"name": "Range", "$text": "Melee"},
+                      {"name": "A", "$text": "4"},
+                      {"name": "WS", "$text": "3+"},
+                      {"name": "S", "$text": "5"},
+                      {"name": "AP", "$text": "-2"},
+                      {"name": "D", "$text": "2"},
+                      {"name": "Keywords", "$text": "Lethal Hits"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "jy0cqyf",
+            "name": "Daemonettes",
+            "type": "unit",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 100}],
+            "categories": [{"name": "Battleline"}, {"name": "Infantry"}],
+            "selections": [
+              {
+                "name": "Alluress",
+                "type": "model",
+                "number": 1,
+                "selections": [
+                  {
+                    "name": "Slashing claws",
+                    "type": "upgrade",
+                    "profiles": [
+                      {
+                        "name": "Slashing claws",
+                        "typeName": "Melee Weapons",
+                        "characteristics": [
+                          {"name": "Range", "$text": "Melee"},
+                          {"name": "A", "$text": "3"},
+                          {"name": "WS", "$text": "3+"},
+                          {"name": "S", "$text": "4"},
+                          {"name": "AP", "$text": "-1"},
+                          {"name": "D", "$text": "1"}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "Daemonette",
+                "type": "model",
+                "number": 9,
+                "selections": [
+                  {
+                    "name": "Slashing claws",
+                    "type": "upgrade",
+                    "number": 9,
+                    "profiles": [
+                      {
+                        "name": "Slashing claws",
+                        "typeName": "Melee Weapons",
+                        "characteristics": [
+                          {"name": "Range", "$text": "Melee"},
+                          {"name": "A", "$text": "3"},
+                          {"name": "WS", "$text": "3+"},
+                          {"name": "S", "$text": "4"},
+                          {"name": "AP", "$text": "-1"},
+                          {"name": "D", "$text": "1"}
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "name": "Daemonic Icon",
+                "type": "upgrade",
+                "profiles": [
+                  {
+                    "name": "Daemonic Icon",
+                    "typeName": "Abilities",
+                    "characteristics": [{"name": "Description", "$text": "SHOULD BE DROPPED"}]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "id": "5szixjw",
+            "name": "Plaguebearers",
+            "type": "unit",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 115}],
+            "categories": [{"name": "Battleline"}, {"name": "Infantry"}],
+            "incomingAssociations": [{"type": "incoming", "from": "pugz86s", "name": "Leading"}],
+            "selections": [
+              {"name": "Plagueridden", "type": "model", "number": 1},
+              {"name": "Plaguebearer", "type": "model", "number": 9}
+            ]
+          },
+          {
+            "id": "second-pb",
+            "name": "Plaguebearers",
+            "type": "unit",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 115}],
+            "categories": [{"name": "Battleline"}],
+            "selections": [
+              {"name": "Plaguebearer", "type": "model", "number": 10}
+            ]
+          },
+          {
+            "id": "dxbjqcn",
+            "name": "Nurgle Soul Grinder",
+            "type": "model",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 180}],
+            "categories": [{"name": "Vehicle"}]
+          }
+        ]
+      }
+    ]
+  }
+}

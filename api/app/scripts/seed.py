@@ -1,0 +1,139 @@
+import json
+from pathlib import Path
+
+from sqlalchemy import select
+
+from app.config import get_settings
+from app.db import session_factory
+from app.models import Ability, Detachment, Faction, RuleEffect
+from app.services.cheatsheet import commit_rows
+from app.services.views import upsert_effect
+
+CORE = [
+    ("command", "No começo do turno, confira CP e os lembretes da facção. HIPÓTESE até você revisar."),
+    ("battle_shock", "Teste quem está abaixo da metade. Falhou: marque battle-shock até a sua próxima Command."),
+    ("movement", "Quem já moveu ou está destruído não entra de novo no movimento."),
+    ("shooting", "Quem avançou só atira com armas ASSAULT, salvo uma permissão que você cadastrou."),
+    ("charge", "Quem avançou ou recuou não carrega, salvo permissão cadastrada."),
+    ("fight", "Lutam as unidades engajadas ou que carregaram neste turno."),
+    ("end_of_turn", "Feche missões, secundárias e ações antes de passar o turno."),
+]
+
+
+def main() -> None:
+    db = session_factory()()
+    try:
+        for phase, text in CORE:
+            ability = db.scalar(select(Ability).where(Ability.kind == "core", Ability.name == phase))
+            if ability is None:
+                ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=True)
+                db.add(ability)
+                db.flush()
+            exists = db.scalar(
+                select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
+            )
+            if exists is None:
+                upsert_effect(
+                    db,
+                    ability.id,
+                    {
+                        "phase": phase,
+                        "timing": "during",
+                        "effect_kind": "reminder",
+                        "owner_label": "Geral",
+                        "effect_text": text,
+                        "is_hypothesis": True,
+                    },
+                )
+        faction = db.scalar(select(Faction).where(Faction.name == "Chaos - Chaos Daemons"))
+        if faction is None:
+            faction = Faction(name="Chaos - Chaos Daemons", source="user", accent_color="#6E2430")
+            db.add(faction)
+            db.flush()
+        detachment = db.scalar(
+            select(Detachment).where(Detachment.faction_id == faction.id, Detachment.name == "Daemonic Incursion")
+        )
+        if detachment is None:
+            detachment = Detachment(faction_id=faction.id, name="Daemonic Incursion", variant="Warp Rifts")
+            db.add(detachment)
+            db.flush()
+        example = db.scalar(
+            select(Ability).where(Ability.kind == "stratagem", Ability.name == "Exemplo — gastar 1 CP")
+        )
+        if example is None:
+            example = Ability(
+                kind="stratagem",
+                detachment_id=detachment.id,
+                name="Exemplo — gastar 1 CP",
+                cp_cost=1,
+                use_limit="per_phase",
+                usable_turn="either",
+                summary_user="Exemplo pessoal para treinar o gasto de CP. Não é uma stratagem de livro.",
+                is_hypothesis=True,
+            )
+            db.add(example)
+            db.flush()
+            upsert_effect(
+                db,
+                example.id,
+                {
+                    "phase": "any",
+                    "effect_kind": "stratagem",
+                    "owner_label": "Daemonic Incursion",
+                    "effect_text": "Exemplo pessoal: gasta 1 CP uma vez por fase.",
+                    "is_hypothesis": True,
+                },
+            )
+        seed_path = Path(get_settings().model_config.get("env_file") or ".") 
+        file = Path("seeds/belakor.json")
+        if not file.exists():
+            file = Path("../fixtures/seed/belakor.sample.json")
+        if file.exists() and os_env_version():
+            payload = json.loads(file.read_text(encoding="utf-8"))
+            # Colinha geral não precisa de versão; grava direto se houver version_id no arquivo.
+            if payload.get("version_id"):
+                commit_rows(db, int(payload["version_id"]), payload.get("rows") or [])
+            else:
+                for row in payload.get("rows") or []:
+                    row.setdefault("owner", {"kind": "general", "name": row.get("owner_label") or "Be'lakor"})
+                    from app.models import ArmyList
+
+                    commit_via_general(db, row)
+        db.commit()
+    finally:
+        db.close()
+
+
+def os_env_version() -> bool:
+    return True
+
+
+def commit_via_general(db, row: dict) -> None:
+    from app.services.cheatsheet import _ability
+
+    ability = _ability(db, 0, row)
+    exists = db.scalar(
+        select(RuleEffect).where(
+            RuleEffect.ability_id == ability.id,
+            RuleEffect.phase == row["phase"],
+            RuleEffect.effect_text == row["text"],
+        )
+    )
+    if exists:
+        return
+    upsert_effect(
+        db,
+        ability.id,
+        {
+            "phase": row["phase"],
+            "timing": row.get("timing") or "during",
+            "effect_kind": "reminder",
+            "owner_label": row.get("owner_label") or "Be'lakor",
+            "effect_text": row["text"],
+            "is_hypothesis": True,
+        },
+    )
+
+
+if __name__ == "__main__":
+    main()

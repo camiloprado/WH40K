@@ -1,0 +1,116 @@
+{
+  "roster": {
+    "generator": "newrecruit.eu v36.47",
+    "costs": [{"name": "pts", "value": 1975}],
+    "forces": [
+      {
+        "catalogueName": "Chaos - Chaos Daemons",
+        "selections": [
+          {
+            "name": "Daemonic Incursion (Warp Rifts)",
+            "type": "upgrade",
+            "categories": [{"name": "Detachment"}]
+          },
+          {
+            "name": "Shalaxi Helbane",
+            "type": "unit",
+            "customName": "Char1",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 450}],
+            "categories": [{"name": "Character"}, {"name": "Warlord"}],
+            "selections": [
+              {"name": "Spear", "type": "upgrade", "number": 1}
+            ],
+            "rules": [{"name": "Secret", "description": "SHOULD BE DROPPED"}]
+          },
+          {
+            "name": "Poxbringer",
+            "type": "unit",
+            "customName": "Char4",
+            "number": 1,
+            "costs": [{"name": "pts", "value": 60}],
+            "categories": [{"name": "Character"}],
+            "selections": [
+              {"name": "Foul balesword", "type": "upgrade", "number": 1},
+              {"name": "Leading Plaguebearers[1]", "type": "upgrade", "categories": [{"name": "Attachment"}]}
+            ]
+          },
+          {
+            "name": "Plaguebearers",
+            "type": "unit",
+            "number": 10,
+            "costs": [{"name": "pts", "value": 115}],
+            "categories": [{"name": "Battleline"}, {"name": "Infantry"}],
+            "selections": [
+              {
+                "name": "Plaguebearer",
+                "type": "model",
+                "number": 9,
+                "selections": [
+                  {"name": "Plaguesword", "type": "upgrade", "number": 7}
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Daemonettes",
+            "type": "unit",
+            "number": 10,
+            "costs": [{"name": "pts", "value": 110}],
+            "categories": [{"name": "Infantry"}],
+            "selections": [
+              {
+                "name": "Piercing claws",
+                "type": "upgrade",
+                "number": 10,
+                "profiles": [
+                  {
+                    "name": "Piercing claws",
+                    "typeName": "Melee Weapons",
+                    "characteristics": [
+                      {"name": "Range", "value": "Melee"},
+                      {"name": "A", "value": "2"},
+                      {"name": "WS", "value": "4+"},
+                      {"name": "S", "value": "4"},
+                      {"name": "AP", "value": "-1"},
+                      {"name": "D", "value": "1"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "name": "Unidade Assault Fixture",
+            "type": "unit",
+            "number": 5,
+            "costs": [{"name": "pts", "value": 90}],
+            "categories": [{"name": "Infantry"}],
+            "selections": [
+              {
+                "name": "Arma Curta",
+                "type": "upgrade",
+                "number": 2,
+                "profiles": [
+                  {
+                    "name": "Arma Curta",
+                    "typeName": "Ranged Weapons",
+                    "characteristics": [
+                      {"name": "Range", "value": "12\""},
+                      {"name": "A", "value": "D6"},
+                      {"name": "BS", "value": "3+"},
+                      {"name": "S", "value": "4"},
+                      {"name": "AP", "value": "0"},
+                      {"name": "D", "value": "1"},
+                      {"name": "Keywords", "value": "ASSAULT"}
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

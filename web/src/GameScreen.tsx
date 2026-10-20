@@ -1,0 +1,1227 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
+import { Link, useNavigate, useParams } from "react-router-dom";
+import { api } from "./api";
+import { bundleFor, db, deviceId, storeBundle, type EventRecord } from "./db";
+import { activeChoice, applyEvents, isChoiceActive, LANES, PHASES, zoneOf, type Choice, type Lane, type LiveUnit, type LogEntry, type Projection, type Zone } from "./engine/project";
+import { evaluateUnit, type Eligibility, type Moved } from "./engine/eligibility";
+import { flushSync } from "./sync";
+import { HypothesisBadge } from "./components";
+
+const PHASE_NAMES: Record<string, string> = {
+  round_start: "Início",
+  command: "Command",
+  battle_shock: "Battle-shock",
+  movement: "Movement",
+  shooting: "Shooting",
+  charge: "Charge",
+  fight: "Fight",
+  end_of_turn: "Fim do turno",
+};
+
+const MOVES: [Moved, string][] = [
+  ["normal", "Normal"],
+  ["advanced", "Avançou"],
+  ["fell_back", "Recuou"],
+  ["remained", "Parado"],
+];
+
+const MOVE_LETTER: Record<string, string> = { none: "·", normal: "N", advanced: "A", fell_back: "R", remained: "P" };
+const OBJECTIVES = ["1", "2", "3", "4", "5", "6"];
+const LANE_NAMES: Record<Lane, string> = { left: "Esquerda", center: "Centro", right: "Direita", home: "Home" };
+const FRONT_LANES: Lane[] = ["left", "center", "right"];
+const PERSONAL_KINDS = new Set(["unit", "leader", "enhancement"]);
+const TIMING_NAMES: Record<string, string> = { start: "Início", during: "Durante", end: "Fim" };
+const SCOPE_NAMES: Record<string, string> = { turn: "neste turno", round: "nesta rodada", battle: "na batalha" };
+
+type Place = Lane | "reserves" | "destroyed";
+const PLACES: Place[] = [...LANES, "reserves", "destroyed"];
+const PLACE_NAMES: Record<Place, string> = { ...LANE_NAMES, reserves: "Reserva", destroyed: "Destruídas" };
+
+export type PhaseEffect = {
+  id: number;
+  ability_id: number;
+  ability_name: string;
+  owner_label: string;
+  effect_text: string;
+  timing: string;
+  is_hypothesis: boolean;
+  unit_ids: number[];
+  choice_options: string[];
+  choice_count: number | null;
+  choice_scope: "turn" | "round" | "battle";
+};
+
+type Card = { unit: any; live: LiveUnit; result: Eligibility; zone: Zone; place: Place; order: number; effects: PhaseEffect[]; chosen: string[] };
+type ChoiceLookup = (effect: PhaseEffect, unitId: number | null) => Choice | undefined;
+
+function phaseEffects(bundle: any, phase: string, mine: boolean): PhaseEffect[] {
+  const abilities = new Map<number, any>((bundle.abilities || []).map((item: any) => [item.id, item]));
+  const units: any[] = bundle.units || [];
+  return (bundle.rule_effects || [])
+    .filter((effect: any) => effect.effect_kind !== "stratagem")
+    .filter((effect: any) => effect.phase === phase || effect.phase === "any")
+    .filter((effect: any) => effect.turn_owner === "both" || (effect.turn_owner === "opponent") !== mine)
+    .map((effect: any) => {
+      const ability = abilities.get(effect.ability_id);
+      let unitIds: number[] = effect.unit_ids || [];
+      if (!unitIds.length && ability && PERSONAL_KINDS.has(ability.kind) && ability.datasheet_id) {
+        unitIds = units.filter((unit) => unit.datasheet_id === ability.datasheet_id).map((unit) => unit.id);
+      }
+      return {
+        id: effect.id,
+        ability_id: effect.ability_id,
+        ability_name: ability?.name || effect.owner_label,
+        owner_label: effect.owner_label,
+        effect_text: effect.effect_text,
+        timing: effect.timing || "during",
+        is_hypothesis: Boolean(effect.is_hypothesis || ability?.is_hypothesis),
+        unit_ids: unitIds,
+        choice_options: effect.choice_options || [],
+        choice_count: effect.choice_count ?? null,
+        choice_scope: effect.choice_scope || "turn",
+      };
+    })
+    .sort((a: PhaseEffect, b: PhaseEffect) => ["start", "during", "end"].indexOf(a.timing) - ["start", "during", "end"].indexOf(b.timing));
+}
+type Menu = { x: number; y: number; unitId: number } | null;
+
+const BLANK: LiveUnit = {
+  list_unit_id: 0,
+  name: "",
+  round: 1,
+  moved: "none",
+  shot: false,
+  charged: false,
+  fought: false,
+  engaged: false,
+  on_action: false,
+  action_name: null,
+  battle_shocked: false,
+  below_half: false,
+  destroyed: false,
+  in_reserves: false,
+  lane: "center",
+  overrides: [],
+};
+
+export function GameScreen() {
+  const { id = "" } = useParams();
+  const navigate = useNavigate();
+  const events = useLiveQuery(() => db.game_events.where("game_id").equals(id).toArray(), [id], []);
+  const game = useLiveQuery(() => db.games.get(id), [id]);
+  const pending = useLiveQuery(() => db.sync_queue.where("game_id").equals(id).count(), [id], 0);
+  const [bundle, setBundle] = useState<any>(null);
+  const [missing, setMissing] = useState(false);
+  const [online, setOnline] = useState(navigator.onLine);
+  const [selected, setSelected] = useState<number | null>(null);
+  const [menu, setMenu] = useState<Menu>(null);
+  const [toast, setToast] = useState<string | null>(null);
+  const [wake, setWake] = useState(typeof navigator.wakeLock?.request === "function");
+  const toastTimer = useRef<number>();
+
+  useEffect(() => {
+    if (!game) return;
+    let alive = true;
+    bundleFor(game.listVersionId).then(async (stored) => {
+      if (stored && alive) setBundle(stored);
+      try {
+        const fetched = await api<any>(`/versions/${game.listVersionId}/bundle`);
+        await storeBundle(fetched);
+        if (alive) setBundle(fetched);
+      } catch {
+        if (alive && !stored) setMissing(true);
+      }
+    });
+    return () => {
+      alive = false;
+    };
+  }, [game?.listVersionId]);
+
+  useEffect(() => {
+    const on = () => setOnline(navigator.onLine);
+    window.addEventListener("online", on);
+    window.addEventListener("offline", on);
+    let lock: { release: () => Promise<void> } | null = null;
+    navigator.wakeLock
+      ?.request("screen")
+      .then((value) => (lock = value))
+      .catch(() => setWake(false));
+    return () => {
+      window.removeEventListener("online", on);
+      window.removeEventListener("offline", on);
+      lock?.release();
+    };
+  }, []);
+
+  const projection = useMemo(() => applyEvents(events || []), [events]);
+  const phase = projection.phase;
+  const effectsNow = useMemo(() => (bundle ? phaseEffects(bundle, phase, projection.player === "me") : []), [bundle, phase, projection.player]);
+
+  const cards: Card[] = useMemo(() => {
+    if (!bundle) return [];
+    return (bundle.units as any[]).map((unit, order) => {
+      const live = projection.live[unit.id] || { ...BLANK, list_unit_id: unit.id, name: unit.datasheet_name };
+      const result = evaluateUnit({
+        phase,
+        unit: live,
+        weapons: (unit.wargear || []).map((item: any) => ({ name: item.weapon_name, keywords: item.keywords || [], kind: item.kind })),
+        unitKeywords: unit.keywords || [],
+        effects: bundle.rule_effects || [],
+      });
+      const zone = zoneOf(live);
+      const place: Place = zone === "table" ? live.lane || "center" : zone;
+      const effects = effectsNow.filter((effect) => effect.unit_ids.includes(unit.id));
+      const chosen = projection.choices
+        .filter((item) => item.list_unit_id === unit.id && isChoiceActive(item, projection.round, projection.player))
+        .flatMap((item) => item.options);
+      return { unit, live, result, zone, place, order, effects, chosen };
+    });
+  }, [bundle, projection, phase, effectsNow]);
+
+  const flash = useCallback((message: string) => {
+    setToast(message);
+    window.clearTimeout(toastTimer.current);
+    toastTimer.current = window.setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  const push = useCallback(
+    async (type: string, payload: Record<string, unknown>, label?: string) => {
+      const event: EventRecord = {
+        id: crypto.randomUUID(),
+        game_id: id,
+        seq: 0,
+        device_id: deviceId(),
+        type,
+        payload,
+        undoes_event_id: typeof payload.undoes_event_id === "string" ? payload.undoes_event_id : null,
+        created_at: new Date().toISOString(),
+      };
+      await db.transaction("rw", db.game_events, db.games, db.sync_queue, async () => {
+        const current = await db.games.get(id);
+        event.seq = (current?.seq || 0) + 1;
+        await db.game_events.add(event);
+        await db.games.update(id, { seq: event.seq, updatedAt: Date.now() });
+        await db.sync_queue.add({ game_id: id, event });
+      });
+      if (label) flash(label);
+      flushSync();
+    },
+    [id, flash],
+  );
+
+  const lastAction = useMemo(
+    () => [...projection.log].reverse().find((item) => !item.undone && item.type !== "undo" && item.type !== "game_started"),
+    [projection.log],
+  );
+
+  const undo = useCallback(() => {
+    if (lastAction) push("undo", { undoes_event_id: lastAction.id }, "Desfeito");
+  }, [lastAction, push]);
+
+  const advance = useCallback(() => push("phase_advanced", {}), [push]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (event.key === "Escape") {
+        setMenu(null);
+        setSelected(null);
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        undo();
+      } else if (event.key.toLowerCase() === "n" && !event.ctrlKey && !event.metaKey) {
+        advance();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, advance]);
+
+  if (missing) {
+    return (
+      <main className="screen">
+        <p className="card">Esta partida usa uma lista que não está neste aparelho. Conecte e abra a lista para baixar.</p>
+      </main>
+    );
+  }
+  if (!game || !bundle) return <main className="screen">Carregando partida…</main>;
+
+  const names = new Map<number, string>((bundle.units as any[]).map((unit) => [unit.id, unit.datasheet_name]));
+  const leaderOf = new Map<number, number>();
+  const ledBy = new Map<number, number>();
+  for (const pair of bundle.attachments || []) {
+    leaderOf.set(pair.leader_list_unit_id, pair.bodyguard_list_unit_id);
+    ledBy.set(pair.bodyguard_list_unit_id, pair.leader_list_unit_id);
+  }
+  const mine = projection.player === "me";
+  const selectedCard = cards.find((item) => item.unit.id === selected) || null;
+
+  function setUnit(unitId: number, patch: Record<string, unknown>, label: string, overrides?: { key: string }[]) {
+    push("unit_state_set", overrides ? { list_unit_id: unitId, patch, overrides } : { list_unit_id: unitId, patch }, `${names.get(unitId)}: ${label}`);
+  }
+
+  function overrideKeys(card: Card): { key: string }[] {
+    const keys: string[] = [];
+    if (phase === "shooting") {
+      if (card.live.moved === "advanced") keys.push("shoot_after_advance");
+      if (card.live.moved === "fell_back") keys.push("shoot_after_fall_back");
+      if (card.live.engaged) keys.push("shoot_engaged");
+      if (card.live.on_action) keys.push("shoot_on_action");
+    }
+    if (phase === "charge") {
+      if (card.live.moved === "advanced") keys.push("charge_after_advance");
+      if (card.live.moved === "fell_back") keys.push("charge_after_fall_back");
+    }
+    if (phase === "fight") keys.push("fight_again");
+    return keys.map((key) => ({ key }));
+  }
+
+  function primary(card: Card) {
+    const flag = phase === "shooting" ? "shot" : phase === "charge" ? "charged" : phase === "fight" ? "fought" : null;
+    if (!flag) {
+      setSelected(card.unit.id);
+      return;
+    }
+    const label = flag === "shot" ? "Atirou" : flag === "charged" ? "Carregou" : "Lutou";
+    if (card.live[flag as keyof LiveUnit]) {
+      setUnit(card.unit.id, { [flag]: false }, `${label} desmarcado`);
+      return;
+    }
+    if (card.result.status === "inactive") {
+      if (!window.confirm(`${card.result.reasons.join(" · ")}. Registrar mesmo assim?`)) return;
+      setUnit(card.unit.id, { [flag]: true }, `${label} (override)`, overrideKeys(card));
+      return;
+    }
+    setUnit(card.unit.id, { [flag]: true }, label);
+  }
+
+  function moveTo(unitId: number, place: Place) {
+    const patch =
+      place === "destroyed"
+        ? { destroyed: true, in_reserves: false }
+        : place === "reserves"
+          ? { destroyed: false, in_reserves: true }
+          : { destroyed: false, in_reserves: false, lane: place };
+    setUnit(unitId, patch, `para ${PLACE_NAMES[place]}`);
+  }
+
+  const choiceFor = (effect: PhaseEffect, unitId: number | null) =>
+    activeChoice(projection.choices, effect.id, unitId, effect.choice_scope, projection.round, projection.player);
+
+  function choose(effect: PhaseEffect, unitId: number | null, options: string[]) {
+    const who = unitId ? `${names.get(unitId)} · ` : "";
+    push(
+      "effect_chosen",
+      { effect_id: effect.id, ability_id: effect.ability_id, list_unit_id: unitId, options, count: effect.choice_count, scope: effect.choice_scope, player: projection.player },
+      `${who}${effect.ability_name}: ${options.join(", ")}`,
+    );
+  }
+
+  const generalEffects = effectsNow.filter((effect) => !effect.unit_ids.length);
+  const abilityName = new Map<number, string>((bundle.abilities || []).map((item: any) => [item.id, item.name]));
+  const effectName = new Map<number, string>((bundle.rule_effects || []).map((item: any) => [item.id, abilityName.get(item.ability_id) || item.owner_label]));
+  const generalActive = projection.choices.filter(
+    (item) => item.list_unit_id == null && isChoiceActive(item, projection.round, projection.player) && !generalEffects.some((effect) => effect.id === item.effect_id),
+  );
+
+  async function jumpTo(target: string) {
+    const from = PHASES.indexOf(phase as (typeof PHASES)[number]);
+    const to = PHASES.indexOf(target as (typeof PHASES)[number]);
+    if (to <= from) return;
+    for (let step = from; step < to; step += 1) await push("phase_advanced", {});
+  }
+
+  const byPlace = (place: Place) =>
+    cards
+      .filter((item) => item.place === place)
+      .sort((a, b) => a.order - b.order);
+  const byZone = (zone: Zone) => cards.filter((item) => item.zone === zone);
+
+  const renderLane = (lane: Lane) => (
+    <ZoneArea key={lane} place={lane} count={byPlace(lane).length} onDropUnit={moveTo} lane>
+      {byPlace(lane).map((card) => (
+        <UnitCard
+          key={card.unit.id}
+          card={card}
+          phase={phase}
+          selected={selected === card.unit.id}
+          choiceFor={choiceFor}
+          leads={leaderOf.has(card.unit.id) ? names.get(leaderOf.get(card.unit.id)!) : undefined}
+          ledBy={ledBy.has(card.unit.id) ? names.get(ledBy.get(card.unit.id)!) : undefined}
+          onSelect={() => setSelected(card.unit.id)}
+          onPrimary={() => primary(card)}
+          onMenu={(x, y) => setMenu({ x, y, unitId: card.unit.id })}
+        />
+      ))}
+    </ZoneArea>
+  );
+
+  const unmoved = cards.filter((item) => item.zone === "table" && item.live.moved === "none").length;
+
+  return (
+    <div className="table-app" style={{ ["--phase" as string]: `var(--${phase})`, ["--accent" as string]: bundle.list?.accent_color }} onClick={() => setMenu(null)}>
+      <PhaseRail phase={phase} mine={mine} onPick={jumpTo} onNext={advance} />
+
+      <section className="board">
+        <PlayerBar
+          side="opponent"
+          title={game.opponentName ? `Oponente · ${game.opponentName}` : "Oponente"}
+          active={!mine}
+          cp={projection.cp.opponent}
+          vp={projection.vp.opponent}
+          onCp={(delta) => push("cp_changed", { delta, player: "opponent", reason: "manual" }, `CP do oponente ${delta > 0 ? "+1" : "−1"}`)}
+          onVp={(delta) => push("vp_scored", { player: "opponent", kind: "other", label: "Ajuste", vp: delta }, `VP do oponente ${delta > 0 ? "+1" : "−1"}`)}
+        />
+
+        <div className="board-scroll">
+        <section className="zone zone-table" aria-label="Mesa">
+          <div className="zone-head">
+            <span>
+              Mesa <span className="muted mono">{byZone("table").length}</span>
+            </span>
+            {phase === "movement" && mine && unmoved > 0 && (
+              <button className="ghost" onClick={() => byZone("table").filter((item) => item.live.moved === "none").forEach((item) => setUnit(item.unit.id, { moved: "remained" }, "Parado"))}>
+                {unmoved} sem mover · marcar como Parado
+              </button>
+            )}
+          </div>
+          <div className="lanes">
+            {FRONT_LANES.map(renderLane)}
+          </div>
+          <div className="home-lane">{renderLane("home")}</div>
+        </section>
+
+        <div className="zone-row">
+          {(["reserves", "destroyed"] as Place[]).map((zone) => (
+            <ZoneArea key={zone} place={zone} count={byPlace(zone).length} onDropUnit={moveTo} compact>
+              {byPlace(zone).map((card) => (
+                <UnitCard
+                  key={card.unit.id}
+                  card={card}
+                  phase={phase}
+                  compact
+                  choiceFor={choiceFor}
+                  selected={selected === card.unit.id}
+                  onSelect={() => setSelected(card.unit.id)}
+                  onPrimary={() => setSelected(card.unit.id)}
+                  onMenu={(x, y) => setMenu({ x, y, unitId: card.unit.id })}
+                />
+              ))}
+            </ZoneArea>
+          ))}
+        </div>
+        </div>
+
+        <PlayerBar
+          side="me"
+          title="Você"
+          active={mine}
+          cp={projection.cp.me}
+          vp={projection.vp.me}
+          onCp={(delta) => push("cp_changed", { delta, player: "me", reason: "manual" }, `Seu CP ${delta > 0 ? "+1" : "−1"}`)}
+          onVp={(delta) => push("vp_scored", { player: "me", kind: "other", label: "Ajuste", vp: delta }, `Seu VP ${delta > 0 ? "+1" : "−1"}`)}
+          footer={
+            <>
+              <span className="round mono">Rodada {projection.round}</span>
+              <span className={`chip ${online ? "" : "chip-warn"}`}>{!online ? "Offline" : pending ? `Sync ${pending}` : "Sync ok"}</span>
+              {!wake && <span className="chip chip-warn" title="Seu navegador não mantém a tela acesa. Ajuste o bloqueio automático.">Tela pode apagar</span>}
+              <button className="ghost" onClick={undo} disabled={!lastAction} title="Ctrl+Z">
+                Desfazer
+              </button>
+              <button className="ghost" onClick={() => navigate(`/games/${id}/summary`)}>
+                Resumo
+              </button>
+            </>
+          }
+        />
+      </section>
+
+      <aside className={`side ${selectedCard ? "has-unit" : ""}`}>
+        {selectedCard && (
+          <Inspector
+            card={selectedCard}
+            phase={phase}
+            leads={leaderOf.has(selectedCard.unit.id) ? names.get(leaderOf.get(selectedCard.unit.id)!) : undefined}
+            ledBy={ledBy.has(selectedCard.unit.id) ? names.get(ledBy.get(selectedCard.unit.id)!) : undefined}
+            onClose={() => setSelected(null)}
+            onPatch={(patch, label, overrides) => setUnit(selectedCard.unit.id, patch, label, overrides)}
+            onPrimary={() => primary(selectedCard)}
+            onBattleShock={(passed) => push("battleshock_result", { list_unit_id: selectedCard.unit.id, passed }, `${selectedCard.unit.datasheet_name}: ${passed ? "passou" : "falhou"}`)}
+            onZone={(place) => moveTo(selectedCard.unit.id, place)}
+            overrides={overrideKeys(selectedCard)}
+            effects={
+              <EffectList
+                title="Efeitos desta unidade"
+                effects={selectedCard.effects}
+                unitId={selectedCard.unit.id}
+                choiceFor={choiceFor}
+                onChoose={choose}
+                empty={`Nada cadastrado para ${PHASE_NAMES[phase] || phase}.`}
+              />
+            }
+          />
+        )}
+        <section className="panel">
+          <EffectList
+            title={`Efeitos gerais · ${PHASE_NAMES[phase] || phase}`}
+            effects={generalEffects}
+            unitId={null}
+            choiceFor={choiceFor}
+            onChoose={choose}
+            empty={generalActive.length ? "" : "Nenhum efeito geral nesta fase. Cadastre no Catálogo."}
+            heading
+          >
+            {generalActive.map((item) => (
+              <p key={`${item.effect_id}-${item.round}-${item.player}`} className="chosen-line">
+                Ativo {SCOPE_NAMES[item.scope]} · {effectName.get(item.effect_id) || "Efeito"}: {item.options.join(" · ")}
+              </p>
+            ))}
+          </EffectList>
+        </section>
+        <PhaseTools phase={phase} mine={mine} projection={projection} bundle={bundle} cards={cards} push={push} />
+        <Stratagems bundle={bundle} projection={projection} push={push} />
+        <GameLog log={projection.log} names={names} />
+      </aside>
+
+      {menu && (
+        <ContextMenu
+          menu={menu}
+          card={cards.find((item) => item.unit.id === menu.unitId)!}
+          phase={phase}
+          onClose={() => setMenu(null)}
+          onPatch={(patch, label, overrides) => setUnit(menu.unitId, patch, label, overrides)}
+          onZone={(place) => moveTo(menu.unitId, place)}
+          onBattleShock={(passed) => push("battleshock_result", { list_unit_id: menu.unitId, passed }, `${names.get(menu.unitId)}: ${passed ? "passou" : "falhou"}`)}
+          overrides={overrideKeys(cards.find((item) => item.unit.id === menu.unitId)!)}
+        />
+      )}
+
+      {toast && (
+        <div className="toast" role="status">
+          {toast}
+          <button className="ghost" onClick={undo}>
+            Desfazer
+          </button>
+        </div>
+      )}
+      <Link className="sr-only" to="/">
+        Início
+      </Link>
+    </div>
+  );
+}
+
+function PhaseRail({ phase, mine, onPick, onNext }: { phase: string; mine: boolean; onPick: (phase: string) => void; onNext: () => void }) {
+  const current = PHASES.indexOf(phase as (typeof PHASES)[number]);
+  return (
+    <nav className="phase-rail" aria-label="Fases">
+      <div className="turn-tag">{mine ? "Seu turno" : "Turno do oponente"}</div>
+      {PHASES.map((id, index) => (
+        <button
+          key={id}
+          className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
+          style={{ ["--c" as string]: `var(--${id})` }}
+          disabled={index < current}
+          onClick={() => onPick(id)}
+          title={index > current ? `Avançar até ${PHASE_NAMES[id]}` : PHASE_NAMES[id]}
+        >
+          <span className="dot" />
+          {PHASE_NAMES[id]}
+        </button>
+      ))}
+      <button className="primary next" onClick={onNext} title="Atalho: N">
+        Próxima fase
+      </button>
+    </nav>
+  );
+}
+
+function PlayerBar({
+  side,
+  title,
+  active,
+  cp,
+  vp,
+  onCp,
+  onVp,
+  footer,
+}: {
+  side: "me" | "opponent";
+  title: string;
+  active: boolean;
+  cp: number;
+  vp: number;
+  onCp: (delta: number) => void;
+  onVp: (delta: number) => void;
+  footer?: ReactNode;
+}) {
+  return (
+    <header className={`player-bar ${side} ${active ? "active" : ""}`}>
+      <strong className="player-name">{title}</strong>
+      <Counter label="CP" value={cp} onChange={onCp} min={0} />
+      <Counter label="VP" value={vp} onChange={onVp} />
+      <div className="player-extra">{footer}</div>
+    </header>
+  );
+}
+
+function Counter({ label, value, onChange, min }: { label: string; value: number; onChange: (delta: number) => void; min?: number }) {
+  return (
+    <div className="counter" aria-label={`${label} ${value}`}>
+      <button className="step" onClick={() => onChange(-1)} disabled={min !== undefined && value <= min} aria-label={`${label} menos um`}>
+        −
+      </button>
+      <span className="counter-value mono">
+        <small>{label}</small>
+        {value}
+      </span>
+      <button className="step" onClick={() => onChange(1)} aria-label={`${label} mais um`}>
+        +
+      </button>
+    </div>
+  );
+}
+
+function ZoneArea({
+  place,
+  count,
+  children,
+  onDropUnit,
+  compact,
+  lane,
+}: {
+  place: Place;
+  count: number;
+  children: ReactNode;
+  onDropUnit: (unitId: number, place: Place) => void;
+  compact?: boolean;
+  lane?: boolean;
+}) {
+  const [over, setOver] = useState(false);
+  const zone = place;
+  return (
+    <section
+      className={`zone zone-${place} ${lane ? "lane" : ""} ${compact ? "compact" : ""} ${over ? "over" : ""}`}
+      aria-label={PLACE_NAMES[place]}
+      onDragOver={(event) => {
+        event.preventDefault();
+        setOver(true);
+      }}
+      onDragLeave={() => setOver(false)}
+      onDrop={(event: DragEvent) => {
+        event.preventDefault();
+        setOver(false);
+        const unitId = Number(event.dataTransfer.getData("text/unit"));
+        if (unitId) onDropUnit(unitId, zone);
+      }}
+    >
+      <div className="zone-head">
+        <span>
+          {PLACE_NAMES[zone]} <span className="muted mono">{count}</span>
+        </span>
+      </div>
+      <div className="zone-body">{count ? children : <p className="muted empty">Arraste unidades para cá</p>}</div>
+    </section>
+  );
+}
+
+function UnitCard({
+  card,
+  phase,
+  selected,
+  compact,
+  leads,
+  ledBy,
+  onSelect,
+  onPrimary,
+  onMenu,
+  choiceFor,
+}: {
+  card: Card;
+  phase: string;
+  selected: boolean;
+  compact?: boolean;
+  choiceFor: ChoiceLookup;
+  leads?: string;
+  ledBy?: string;
+  onSelect: () => void;
+  onPrimary: () => void;
+  onMenu: (x: number, y: number) => void;
+}) {
+  const { unit, live, result } = card;
+  const tapped = result.status === "done";
+  const state = card.zone === "destroyed" ? "destroyed" : result.status;
+  const onTable = card.zone === "table";
+  const pendingChoices = onTable ? card.effects.filter((effect) => effect.choice_options.length && !choiceFor(effect, unit.id)) : [];
+  return (
+    <div className={`card-cell ${compact ? "compact" : ""}`}>
+      <button
+        className={`unit-card ${state} ${tapped ? "tapped" : ""} ${selected ? "selected" : ""}`}
+        data-unit={unit.id}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.setData("text/unit", String(unit.id));
+          event.dataTransfer.effectAllowed = "move";
+        }}
+        onClick={(event) => {
+          event.stopPropagation();
+          onSelect();
+        }}
+        onDoubleClick={(event) => {
+          event.stopPropagation();
+          onPrimary();
+        }}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onMenu(event.clientX, event.clientY);
+        }}
+      >
+        <span className="card-top">
+          <span className="card-name">{unit.datasheet_name}</span>
+          {unit.is_warlord && <span className="crown" title="Warlord">★</span>}
+        </span>
+        {!compact && (
+          <span className="card-meta mono">
+            {unit.model_count} mod · {unit.points} pts
+          </span>
+        )}
+        {!compact && (leads || ledBy) && <span className="card-link">{leads ? `Lidera ${leads}` : `Com ${ledBy}`}</span>}
+        {!compact && (
+          <span className="pips" aria-hidden>
+            <Pip on={live.moved !== "none"} label={MOVE_LETTER[live.moved]} c="movement" title="Movimento" />
+            <Pip on={live.shot} label="T" c="shooting" title="Atirou" />
+            <Pip on={live.charged} label="C" c="charge" title="Carregou" />
+            <Pip on={live.fought} label="L" c="fight" title="Lutou" />
+            {live.engaged && <Pip on label="E" c="fight" title="Engajada" />}
+            {live.battle_shocked && <Pip on label="BS" c="battle_shock" title="Battle-shock" />}
+          </span>
+        )}
+        {result.reasons.length > 0 && card.zone !== "destroyed" && <span className="card-reason">{result.reasons.join(" · ")}</span>}
+        {phase === "shooting" && result.allowedWeapons.length > 0 && result.reasons.includes("Só armas ASSAULT") && (
+          <span className="card-weapons">{result.allowedWeapons.join(", ")}</span>
+        )}
+        {!compact && onTable && pendingChoices.length > 0 && <span className="card-effects pending">Escolher: {pendingChoices[0].ability_name}</span>}
+        {!compact && onTable && !pendingChoices.length && card.chosen.length > 0 && <span className="card-effects chosen">{card.chosen.join(" · ")}</span>}
+        {!compact && onTable && !pendingChoices.length && !card.chosen.length && card.effects.length > 0 && (
+          <span className="card-effects">
+            ✦ {card.effects.length} efeito{card.effects.length > 1 ? "s" : ""} nesta fase
+          </span>
+        )}
+      </button>
+    </div>
+  );
+}
+
+function Pip({ on, label, c, title }: { on: boolean; label: string; c: string; title: string }) {
+  return (
+    <span className={`pip ${on ? "on" : ""}`} style={{ ["--c" as string]: `var(--${c})` }} title={title}>
+      {label}
+    </span>
+  );
+}
+
+type PatchFn = (patch: Record<string, unknown>, label: string, overrides?: { key: string }[]) => void;
+
+function Inspector({
+  card,
+  phase,
+  leads,
+  ledBy,
+  onClose,
+  onPatch,
+  onPrimary,
+  onBattleShock,
+  onZone,
+  overrides,
+  effects,
+}: {
+  card: Card;
+  phase: string;
+  leads?: string;
+  ledBy?: string;
+  onClose: () => void;
+  onPatch: PatchFn;
+  onPrimary: () => void;
+  onBattleShock: (passed: boolean) => void;
+  onZone: (place: Place) => void;
+  overrides: { key: string }[];
+  effects: ReactNode;
+}) {
+  const { unit, live, result } = card;
+  const primaryLabel = phase === "shooting" ? (live.shot ? "Desmarcar tiro" : "Atirou") : phase === "charge" ? (live.charged ? "Desmarcar carga" : "Carregou") : phase === "fight" ? (live.fought ? "Desmarcar luta" : "Lutou") : null;
+  return (
+    <section className="panel inspector" aria-label="Unidade selecionada">
+      <div className="panel-head">
+        <h2>{unit.datasheet_name}</h2>
+        <button className="ghost close" onClick={onClose} aria-label="Fechar">
+          ×
+        </button>
+      </div>
+      <p className="muted mono">
+        {unit.model_count} modelos · {unit.points} pts{unit.is_warlord ? " · Warlord" : ""}
+      </p>
+      {unit.enhancement_name && <p className="muted">Enhancement: {unit.enhancement_name}</p>}
+      {(leads || ledBy) && <p className="muted">{leads ? `Lidera ${leads}` : `Liderada por ${ledBy}`}</p>}
+      <p className={`status-line ${result.status}`}>
+        {statusLabel(card)}
+        {result.reasons.length > 0 && ` — ${result.reasons.join(" · ")}`}
+      </p>
+      {card.chosen.length > 0 && <p className="chosen-line">Ativo: {card.chosen.join(" · ")}</p>}
+
+      {effects}
+
+      {phase === "movement" && (
+        <div className="action-grid">
+          {MOVES.map(([move, label]) => (
+            <button key={move} className={live.moved === move ? "primary" : ""} onClick={() => onPatch({ moved: move }, label)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
+      {primaryLabel && (
+        <button className="primary wide" onClick={onPrimary}>
+          {primaryLabel}
+        </button>
+      )}
+      {phase === "battle_shock" && (
+        <div className="action-grid">
+          <button onClick={() => onBattleShock(true)}>Passou</button>
+          <button onClick={() => onBattleShock(false)}>Falhou</button>
+        </div>
+      )}
+      {result.status === "inactive" && overrides.length > 0 && (
+        <button className="ghost wide" onClick={() => onPatch({}, "restrição ignorada", overrides)}>
+          Ignorar restrição nesta fase
+        </button>
+      )}
+
+      <div className="toggles">
+        <Toggle on={live.engaged} label="Engajada" onClick={() => onPatch({ engaged: !live.engaged }, live.engaged ? "fora de combate" : "engajada")} />
+        <Toggle on={live.on_action} label="Em ação" title="Unidade fazendo uma Action, como uma missão. Enquanto isso, não atira nem carrega." onClick={() => onPatch({ on_action: !live.on_action }, live.on_action ? "saiu da ação" : "em ação")} />
+        <Toggle on={live.below_half} label="Abaixo da metade" onClick={() => onPatch({ below_half: !live.below_half }, live.below_half ? "acima da metade" : "abaixo da metade")} />
+        <Toggle on={live.battle_shocked} label="Battle-shock" onClick={() => onPatch({ battle_shocked: !live.battle_shocked }, live.battle_shocked ? "sem battle-shock" : "battle-shock")} />
+      </div>
+
+      {(unit.wargear || []).length > 0 && (
+        <ul className="weapons">
+          {unit.wargear.map((item: any, index: number) => {
+            const allowed = phase !== "shooting" || result.allowedWeapons.includes(item.weapon_name);
+            return (
+              <li key={index} className={allowed ? "" : "dim"}>
+                <span>
+                  {item.count > 1 ? `${item.count}× ` : ""}
+                  {item.weapon_name}
+                </span>
+                {(item.keywords || []).length > 0 && <span className="kw">{item.keywords.join(" ")}</span>}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      <p className="muted small-title">Onde está</p>
+      <div className="zone-buttons">
+        {PLACES.map((place) => (
+          <button key={place} className={place === card.place ? "primary" : "ghost"} aria-pressed={place === card.place} onClick={() => place !== card.place && onZone(place)}>
+            {PLACE_NAMES[place]}
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Toggle({ on, label, title, onClick }: { on: boolean; label: string; title?: string; onClick: () => void }) {
+  return (
+    <button className={`toggle ${on ? "on" : ""}`} aria-pressed={on} title={title} onClick={onClick}>
+      {label}
+    </button>
+  );
+}
+
+function statusLabel(card: Card) {
+  if (card.zone === "destroyed") return "Destruída";
+  if (card.zone === "reserves") return "Na reserva";
+  return { active: "Pode agir", inactive: "Não pode agir", done: "Já agiu", warn: "Atenção" }[card.result.status];
+}
+
+function ContextMenu({
+  menu,
+  card,
+  phase,
+  onClose,
+  onPatch,
+  onZone,
+  onBattleShock,
+  overrides,
+}: {
+  menu: NonNullable<Menu>;
+  card: Card;
+  phase: string;
+  onClose: () => void;
+  onPatch: PatchFn;
+  onZone: (place: Place) => void;
+  onBattleShock: (passed: boolean) => void;
+  overrides: { key: string }[];
+}) {
+  const run = (fn: () => void) => () => {
+    fn();
+    onClose();
+  };
+  const left = Math.min(menu.x, window.innerWidth - 240);
+  const top = Math.min(menu.y, window.innerHeight - 420);
+  const { live } = card;
+  return (
+    <div className="context-menu" style={{ left, top }} role="menu" onClick={(event) => event.stopPropagation()}>
+      <p className="menu-title">{card.unit.datasheet_name}</p>
+      {MOVES.map(([move, label]) => (
+        <button key={move} role="menuitem" onClick={run(() => onPatch({ moved: move }, label))}>
+          Movimento: {label}
+        </button>
+      ))}
+      <hr />
+      <button role="menuitem" onClick={run(() => onPatch({ shot: !live.shot }, live.shot ? "tiro desmarcado" : "Atirou"))}>
+        {live.shot ? "Desmarcar tiro" : "Atirou"}
+      </button>
+      <button role="menuitem" onClick={run(() => onPatch({ charged: !live.charged }, live.charged ? "carga desmarcada" : "Carregou"))}>
+        {live.charged ? "Desmarcar carga" : "Carregou"}
+      </button>
+      <button role="menuitem" onClick={run(() => onPatch({ fought: !live.fought }, live.fought ? "luta desmarcada" : "Lutou"))}>
+        {live.fought ? "Desmarcar luta" : "Lutou"}
+      </button>
+      <button role="menuitem" onClick={run(() => onPatch({ engaged: !live.engaged }, live.engaged ? "fora de combate" : "engajada"))}>
+        {live.engaged ? "Sair do combate" : "Engajada"}
+      </button>
+      {phase === "battle_shock" && (
+        <>
+          <button role="menuitem" onClick={run(() => onBattleShock(true))}>
+            Battle-shock: passou
+          </button>
+          <button role="menuitem" onClick={run(() => onBattleShock(false))}>
+            Battle-shock: falhou
+          </button>
+        </>
+      )}
+      {overrides.length > 0 && card.result.status === "inactive" && (
+        <button role="menuitem" onClick={run(() => onPatch({}, "restrição ignorada", overrides))}>
+          Ignorar restrição nesta fase
+        </button>
+      )}
+      <hr />
+      {PLACES.filter((place) => place !== card.place).map((place) => (
+        <button key={place} role="menuitem" onClick={run(() => onZone(place))}>
+          Mover para {PLACE_NAMES[place]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function EffectList({
+  title,
+  effects,
+  unitId,
+  choiceFor,
+  onChoose,
+  empty,
+  heading,
+  children,
+}: {
+  title: string;
+  effects: PhaseEffect[];
+  unitId: number | null;
+  choiceFor: ChoiceLookup;
+  onChoose: (effect: PhaseEffect, unitId: number | null, options: string[]) => void;
+  empty: string;
+  heading?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <div className="effects" aria-label={title}>
+      {heading ? <h2>{title}</h2> : <p className="muted small-title">{title}</p>}
+      {!effects.length && empty && <p className="muted">{empty}</p>}
+      {effects.map((effect) => (
+        <EffectRowLive key={effect.id} effect={effect} chosen={choiceFor(effect, unitId)} onChoose={(options) => onChoose(effect, unitId, options)} />
+      ))}
+      {children}
+    </div>
+  );
+}
+
+function EffectRowLive({ effect, chosen, onChoose }: { effect: PhaseEffect; chosen?: Choice; onChoose: (options: string[]) => void }) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  const count = effect.choice_count || 1;
+  const hasChoice = effect.choice_options.length > 0;
+  const open = hasChoice && (!chosen || editing);
+  return (
+    <article className={`effect ${hasChoice && !chosen ? "needs-choice" : ""}`}>
+      <header className="effect-head">
+        <strong>{effect.ability_name}</strong>
+        <span className="muted mono">{TIMING_NAMES[effect.timing] || effect.timing}</span>
+        <HypothesisBadge on={effect.is_hypothesis} />
+      </header>
+      <p>{effect.effect_text}</p>
+      {hasChoice && chosen && !editing && (
+        <p className="chosen-line">
+          Escolhido {SCOPE_NAMES[chosen.scope]}: {chosen.options.join(" · ")}{" "}
+          <button
+            className="ghost link"
+            onClick={() => {
+              setPicked(chosen.options);
+              setEditing(true);
+            }}
+          >
+            Trocar
+          </button>
+        </p>
+      )}
+      {open && (
+        <div className="choice">
+          <p className="muted">
+            Escolha {count} de {effect.choice_options.length} · vale {SCOPE_NAMES[effect.choice_scope]}
+          </p>
+          <div className="choice-options">
+            {effect.choice_options.map((option) => {
+              const on = picked.includes(option);
+              return (
+                <button
+                  key={option}
+                  className={`toggle ${on ? "on" : ""}`}
+                  aria-pressed={on}
+                  disabled={!on && picked.length >= count}
+                  onClick={() => setPicked(on ? picked.filter((item) => item !== option) : [...picked, option])}
+                >
+                  {option}
+                </button>
+              );
+            })}
+          </div>
+          <button
+            className="primary wide"
+            disabled={picked.length !== count}
+            onClick={() => {
+              onChoose(picked);
+              setEditing(false);
+              setPicked([]);
+            }}
+          >
+            Confirmar ({picked.length}/{count})
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+type PushFn = (type: string, payload: Record<string, unknown>, label?: string) => Promise<void>;
+
+function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: string; mine: boolean; projection: Projection; bundle: any; cards: Card[]; push: PushFn }) {
+  const [shadow, setShadow] = useState(0);
+  const [whole, setWhole] = useState(false);
+  const [vp, setVp] = useState(5);
+  const [kind, setKind] = useState<"primary" | "secondary">("primary");
+  const current = projection.shadow.find((item) => item.round === projection.round && item.player === "me");
+  const pendingShock = cards.filter((item) => item.zone === "table" && item.live.below_half && !item.live.battle_shocked);
+
+  if (phase === "round_start") {
+    return (
+      <section className="panel">
+        <h2>Início da rodada</h2>
+        <p className="muted">Antes da Command: efeitos de começo de battle round. O CP entra na fase seguinte.</p>
+      </section>
+    );
+  }
+  if (phase === "command" && mine) {
+    return (
+      <section className="panel">
+        <h2>Command</h2>
+        <button className="primary wide" onClick={() => push("cp_changed", { delta: 1, reason: "command_phase", player: "me" }, "CP +1 da Command")}>
+          Receber CP da fase (+1)
+        </button>
+        <div className="shadow">
+          <p>
+            Shadow of Chaos <HypothesisBadge on />
+          </p>
+          <label className="row">
+            Objetivos em Shadow
+            <input className="mono narrow" type="number" min={0} max={20} value={current?.objectives_controlled ?? shadow} onChange={(event) => setShadow(Number(event.target.value))} />
+          </label>
+          <label className="row">
+            <input type="checkbox" checked={current?.whole_board ?? whole} onChange={(event) => setWhole(event.target.checked)} />
+            Tabuleiro todo em Shadow
+          </label>
+          <button onClick={() => push("shadow_set", { player: "me", objectives_controlled: shadow, whole_board: whole }, "Shadow registrado")}>Registrar Shadow</button>
+        </div>
+      </section>
+    );
+  }
+  if (phase === "battle_shock") {
+    return (
+      <section className="panel">
+        <h2>Battle-shock</h2>
+        <p className="muted">Selecione a unidade para marcar Passou ou Falhou. Marque "Abaixo da metade" no inspetor para ela aparecer aqui.</p>
+        {pendingShock.map((item) => (
+          <div key={item.unit.id} className="row between">
+            <span>{item.unit.datasheet_name}</span>
+            <span className="row">
+              <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: true }, `${item.unit.datasheet_name}: passou`)}>Passou</button>
+              <button onClick={() => push("battleshock_result", { list_unit_id: item.unit.id, passed: false }, `${item.unit.datasheet_name}: falhou`)}>Falhou</button>
+            </span>
+          </div>
+        ))}
+      </section>
+    );
+  }
+  if (phase === "end_of_turn") {
+    const owner = projection.player as "me" | "opponent";
+    return (
+      <section className="panel">
+        <h2>Fim do turno</h2>
+        <div className="checklist">
+          <label className="row">
+            <input type="checkbox" /> Primária
+          </label>
+          {(bundle.version?.secondaries || []).map((item: string) => (
+            <label key={item} className="row">
+              <input type="checkbox" /> {item}
+            </label>
+          ))}
+          <label className="row">
+            <input type="checkbox" /> Ações concluídas
+          </label>
+        </div>
+        <p className="muted">Objetivos</p>
+        <div className="objectives">
+          {OBJECTIVES.map((label) => {
+            const controller = projection.objectives.find((item) => item.objective_label === label && item.round === projection.round)?.controller || "none";
+            const next = controller === "none" ? "me" : controller === "me" ? "opponent" : controller === "opponent" ? "contested" : "none";
+            return (
+              <button key={label} className={`objective ${controller}`} onClick={() => push("objective_set", { objective_label: label, controller: next, player_turn: owner })} title="Toque para trocar: você → oponente → disputado → ninguém">
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="row">
+          <select value={kind} onChange={(event) => setKind(event.target.value as "primary" | "secondary")}>
+            <option value="primary">Primária</option>
+            <option value="secondary">Secundária</option>
+          </select>
+          <input className="mono narrow" type="number" value={vp} onChange={(event) => setVp(Number(event.target.value))} />
+          <button className="primary" onClick={() => push("vp_scored", { player: owner, kind, label: kind === "primary" ? "Primária" : "Secundária", vp }, `+${vp} VP`)}>
+            Anotar VP
+          </button>
+        </div>
+      </section>
+    );
+  }
+  return null;
+}
+
+function Stratagems({ bundle, projection, push }: { bundle: any; projection: Projection; push: PushFn }) {
+  const list = (bundle.abilities || []).filter((item: any) => item.kind === "stratagem");
+  if (!list.length) return null;
+  const cp = projection.player === "me" ? projection.cp.me : projection.cp.opponent;
+  return (
+    <section className="panel">
+      <h2>Stratagems</h2>
+      {list.map((item: any) => {
+        const used = projection.stratagem_uses.some((use) => use.stratagem_name === item.name && use.phase === projection.phase && use.round === projection.round && use.player === projection.player);
+        const cost = item.cp_cost || 0;
+        return (
+          <button
+            key={item.id}
+            className={`stratagem ${used ? "used" : ""} ${cost > cp ? "short" : ""}`}
+            onClick={() => {
+              if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
+              const short = cost > cp;
+              if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
+              push(
+                "stratagem_used",
+                { ability_id: item.id, stratagem_name: item.name, cp_spent: cost, use_limit: item.use_limit || "none", player: projection.player, limit_overridden: used, cp_override: short },
+                `${item.name} (−${cost} CP)`,
+              );
+            }}
+          >
+            <span>{item.name}</span>
+            <span className="mono">{cost} CP</span>
+          </button>
+        );
+      })}
+    </section>
+  );
+}
+
+function GameLog({ log, names }: { log: LogEntry[]; names: Map<number, string> }) {
+  const ref = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    ref.current?.scrollTo({ top: ref.current.scrollHeight });
+  }, [log.length]);
+  return (
+    <section className="panel log-panel">
+      <h2>Log</h2>
+      <ol className="log" ref={ref}>
+        {log.map((entry) => (
+          <li key={entry.id} className={entry.undone ? "undone" : ""}>
+            <span className="log-meta mono" style={{ color: `var(--${entry.phase})` }}>
+              R{entry.round} {entry.player === "me" ? "Você" : "Op"}
+            </span>
+            {describe(entry, names)}
+          </li>
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+export function describe(entry: LogEntry, names: Map<number, string>) {
+  const p = entry.payload;
+  const unit = names.get(Number(p.list_unit_id)) || "Unidade";
+  switch (entry.type) {
+    case "game_started":
+      return "Partida começou";
+    case "phase_advanced":
+      return `→ ${PHASE_NAMES[entry.phase] || entry.phase}`;
+    case "unit_state_set": {
+      const parts = Object.entries(p.patch || {}).map(([key, value]) => {
+        if (key === "moved") return MOVES.find(([move]) => move === value)?.[1] || String(value);
+        if (key === "destroyed") return value ? "destruída" : "voltou";
+        if (key === "in_reserves") return value ? "reserva" : "mesa";
+        if (key === "lane") return LANE_NAMES[value as Lane] || String(value);
+        return `${key}=${value}`;
+      });
+      if (p.overrides?.length) parts.push("override");
+      return `${unit}: ${parts.join(", ")}`;
+    }
+    case "cp_changed":
+      return `CP ${p.player === "opponent" ? "do oponente " : ""}${p.delta > 0 ? "+" : ""}${p.delta}`;
+    case "vp_scored":
+      return `VP ${p.player === "opponent" ? "do oponente " : ""}${p.vp > 0 ? "+" : ""}${p.vp} (${p.label})`;
+    case "stratagem_used":
+      return `Stratagem: ${p.stratagem_name} (−${p.cp_spent} CP)`;
+    case "objective_set":
+      return `Objetivo ${p.objective_label}: ${p.controller}`;
+    case "shadow_set":
+      return `Shadow: ${p.objectives_controlled} objetivos${p.whole_board ? ", tabuleiro todo" : ""}`;
+    case "battleshock_result":
+      return `${unit}: battle-shock ${p.passed ? "passou" : "falhou"}`;
+    case "effect_chosen":
+      return `${p.list_unit_id ? `${unit} · ` : ""}escolheu ${(p.options || []).join(", ")}`;
+    case "undo":
+      return "Desfazer";
+    case "game_ended":
+      return "Fim de jogo";
+    default:
+      return entry.type;
+  }
+}
+
+export function EventTimeline({ events, names }: { events: EventRecord[]; names?: Map<number, string> }) {
+  const projection = applyEvents(events);
+  return <GameLog log={projection.log} names={names || new Map()} />;
+}

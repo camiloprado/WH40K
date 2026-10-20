@@ -1,0 +1,25 @@
++++++++++++++++++++++++++++++++++++++++++++++++
++ FACTION KEYWORD: Chaos - Chaos Daemons
++ DETACHMENT: Daemonic Incursion (Warp Rifts)
++ FORCE DISPOSITION: Disruption
++ TOTAL ARMY POINTS: 1975pts
++
++ WARLORD: Char1: Shalaxi Helbane
++ ENHANCEMENT: The Endless Gift (on Char2: Great Unclean One)
++ NUMBER OF UNITS: 12
++ SECONDARY: - Bring It Down: (2x2) + (1x4) + (2x6) - Assassination: 4 Characters
++++++++++++++++++++++++++++++++++++++++++++++++
+
+Char2: 1x Great Unclean One (295 pts): Putrid vomit, Bilesword, 2x Plague flail
+Enhancement: The Endless Gift (+30 pts)
+Char4: 1x Poxbringer (60 pts): Foul balesword
+Leading Plaguebearers[1]
+
+10x Plaguebearers (115 pts)
+• 9x Plaguebearer
+    7 with Plaguesword
+    1 with Instrument of Chaos, Plaguesword
+• 1x Plagueridden: Plaguesword
+  Attached to Poxbringer
+
+Created with newrecruit.eu v36.47

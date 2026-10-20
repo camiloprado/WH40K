@@ -1,0 +1,44 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: wh40k
+      POSTGRES_PASSWORD: wh40k
+      POSTGRES_DB: wh40k
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wh40k -d wh40k"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+
+  api:
+    build: ./api
+    environment:
+      APP_ENV: prod
+      DATABASE_URL: postgresql+psycopg://wh40k:wh40k@db:5432/wh40k
+      APP_TOKEN_HASH: ${APP_TOKEN_HASH:-}
+      EXTRA_HOSTS: ${EXTRA_HOSTS:-}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    user: "1000:1000"
+
+  caddy:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.caddy
+    ports:
+      - "127.0.0.1:443:443"
+    depends_on:
+      - api
+    volumes:
+      - caddydata:/data
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  caddydata:

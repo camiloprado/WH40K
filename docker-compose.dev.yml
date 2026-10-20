@@ -1,0 +1,12 @@
+services:
+  db:
+    ports:
+      - "127.0.0.1:15432:5432"
+  api:
+    environment:
+      APP_ENV: dev
+    ports:
+      - "127.0.0.1:18001:8000"
+  caddy:
+    ports:
+      - "127.0.0.1:18081:80"

@@ -1,0 +1,8 @@
+---
+description: Nunca incluir Co-Authored-By ou crédito de AI em commits
+alwaysApply: true
+---
+
+# Commits sem co-autor
+
+Nunca adicione `Co-Authored-By`, crédito de Cursor/AI, nem trailers de co-autoria em mensagens de commit. Use apenas a mensagem pedida pelo usuário.
