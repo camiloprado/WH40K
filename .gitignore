@@ -18,6 +18,8 @@ web/dist/
 web/dev-dist/
 web/test-results/
 web/playwright-report/
+# Playtest/QA local (não entra no repo)
+docs/qa/
 *.tsbuildinfo
 .DS_Store
 

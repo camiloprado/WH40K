@@ -19,7 +19,7 @@ services:
     environment:
       APP_ENV: prod
       DATABASE_URL: postgresql+psycopg://wh40k:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/wh40k
-      APP_TOKEN_HASH: ${APP_TOKEN_HASH:?set APP_TOKEN_HASH}
+      APP_TOKEN_HASH: ${APP_TOKEN_HASH:-}
       EXTRA_HOSTS: ${EXTRA_HOSTS:-}
       TOKEN_HASH_FILE: /app/data/app_token_hash
       BACKUP_DIR: /app/backups
