@@ -109,6 +109,7 @@ const BLANK: LiveUnit = {
   charged: false,
   fought: false,
   engaged: false,
+  engaged_at_fight_start: false,
   on_action: false,
   action_name: null,
   battle_shocked: false,
@@ -176,12 +177,21 @@ export function GameScreen() {
     if (!bundle) return [];
     return (bundle.units as any[]).map((unit, order) => {
       const live = projection.live[unit.id] || { ...BLANK, list_unit_id: unit.id, name: unit.datasheet_name };
+      const var_objShadow = shadowNow(projection);
       const result = evaluateUnit({
         phase,
         unit: live,
         weapons: (unit.wargear || []).map((item: any) => ({ name: item.weapon_name, keywords: item.keywords || [], kind: item.kind })),
         unitKeywords: unit.keywords || [],
         effects: bundle.rule_effects || [],
+        game: {
+          round: projection.round,
+          shadow: [
+            "own_dz",
+            ...(var_objShadow.nml ? ["nml"] : []),
+            ...(var_objShadow.opp_dz ? ["opp_dz"] : []),
+          ],
+        },
       });
       const zone = zoneOf(live);
       const place: Place = zone === "table" ? live.lane || "center" : zone;

@@ -17,8 +17,14 @@ CORE = [
     ),
     ("movement", "Quem já moveu ou está destruído não entra de novo no movimento."),
     ("shooting", "Quem avançou só atira com armas ASSAULT, salvo uma permissão que você cadastrou."),
-    ("charge", "Quem avançou ou recuou não carrega, salvo permissão cadastrada."),
-    ("fight", "Lutam as unidades engajadas ou que carregaram neste turno."),
+    (
+        "charge",
+        "Quem avançou, recuou ou está engajado não carrega, salvo permissão. Lembrete: precisa de inimigo a 12\".",
+    ),
+    (
+        "fight",
+        "Lutam as engajadas, as que carregaram, ou as que estavam engajadas no começo do Fight. Desengajada elegível → Overrun (pile-in extra).",
+    ),
     ("end_of_turn", "Feche missões, secundárias e ações antes de passar o turno."),
 ]
 
@@ -32,7 +38,7 @@ def main() -> None:
                 ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=True)
                 db.add(ability)
                 db.flush()
-            elif phase == "battle_shock":
+            elif phase in ("battle_shock", "charge", "fight"):
                 ability.summary_user = text
             exists = db.scalar(
                 select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
@@ -50,7 +56,7 @@ def main() -> None:
                         "is_hypothesis": True,
                     },
                 )
-            elif phase == "battle_shock":
+            elif phase in ("battle_shock", "charge", "fight"):
                 exists.effect_text = text
                 exists.is_hypothesis = True
         faction = db.scalar(select(Faction).where(Faction.name == "Chaos - Chaos Daemons"))

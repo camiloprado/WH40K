@@ -59,6 +59,28 @@ it("mantém battle-shock até passar no teste", () => {
   expect(undone.live[1].battle_shocked).toBe(true);
 });
 
+it("grava engaged_at_fight_start ao entrar em Fight", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+    ev(2, "unit_state_set", { list_unit_id: 1, patch: { engaged: true } }, "2026-10-15T12:00:01Z"),
+  ];
+  let seq = 3;
+  let state = applyEvents(events);
+  while (state.phase !== "fight" && seq < 20) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(events);
+  }
+  expect(state.phase).toBe("fight");
+  expect(state.live[1].engaged_at_fight_start).toBe(true);
+  const cleared = applyEvents([
+    ...events,
+    ev(seq, "unit_state_set", { list_unit_id: 1, patch: { engaged: false } }, "2026-10-15T12:01:00Z"),
+  ]);
+  expect(cleared.live[1].engaged).toBe(false);
+  expect(cleared.live[1].engaged_at_fight_start).toBe(true);
+});
+
 it("Shadow por fase e legado whole_board", () => {
   const start = ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z");
   const legacy = applyEvents([

@@ -10,6 +10,7 @@ con_setPatchFields = {
     "charged",
     "fought",
     "engaged",
+    "engaged_at_fight_start",
     "on_action",
     "action_name",
     "battle_shocked",
@@ -101,6 +102,7 @@ def _blank(unit_id: int, name: str, round_no: int, previous: dict | None) -> dic
         "charged": False,
         "fought": False,
         "engaged": bool(previous and previous["engaged"]),
+        "engaged_at_fight_start": False,
         "on_action": False,
         "action_name": None,
         "battle_shocked": bool(previous and previous["battle_shocked"]),
@@ -185,6 +187,9 @@ def _apply(state: dict, event: dict) -> None:
             entered_my_command = state["player"] == "me"
         if entered_my_command:
             _roll(state)
+        if state["phase"] == "fight":
+            for unit in state["live"].values():
+                unit["engaged_at_fight_start"] = bool(unit["engaged"])
         _open_turn(state, event)
         return
     if kind == "unit_state_set":

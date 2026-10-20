@@ -159,6 +159,27 @@ def test_battle_shock_persists_until_passed():
     assert state["live"][1]["battle_shocked"] is True
 
 
+def test_engaged_at_fight_start_on_entering_fight():
+    events = [
+        started(),
+        ev(2, "unit_state_set", {"list_unit_id": 1, "patch": {"engaged": True}}, "2026-10-15T12:00:01Z"),
+    ]
+    seq = 3
+    state = apply_events(events)
+    while state["phase"] != "fight" and seq < 20:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    assert state["phase"] == "fight"
+    assert state["live"][1]["engaged_at_fight_start"] is True
+    events.append(
+        ev(seq, "unit_state_set", {"list_unit_id": 1, "patch": {"engaged": False}}, "2026-10-15T12:01:00Z")
+    )
+    state = apply_events(events)
+    assert state["live"][1]["engaged"] is False
+    assert state["live"][1]["engaged_at_fight_start"] is True
+
+
 def test_lane_survives_new_turn():
     events = [
         started(),

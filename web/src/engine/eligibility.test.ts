@@ -148,6 +148,56 @@ describe("elegibilidade", () => {
     expect(empty.status).toBe("done");
   });
 
+  it("Desperate Escape quando engajada e em battle-shock na Movement", () => {
+    const result = evaluateUnit({
+      phase: "movement",
+      unit: base({ engaged: true, battle_shocked: true }),
+    });
+    expect(result.status).toBe("warn");
+    expect(result.reasons.some((item) => item.includes("Desperate Escape"))).toBe(true);
+    expect(
+      evaluateUnit({ phase: "movement", unit: base({ engaged: true }) }).reasons.some((item) =>
+        item.includes("Desperate Escape"),
+      ),
+    ).toBe(false);
+    expect(
+      evaluateUnit({ phase: "movement", unit: base({ battle_shocked: true }) }).reasons.some((item) =>
+        item.includes("Desperate Escape"),
+      ),
+    ).toBe(false);
+  });
+
+  it("Overrun fight quando carregou ou estava engajada no começo", () => {
+    const charged = evaluateUnit({ phase: "fight", unit: base({ charged: true }) });
+    expect(charged.status).toBe("active");
+    expect(charged.reasons.some((item) => item.includes("Overrun"))).toBe(true);
+    const was = evaluateUnit({
+      phase: "fight",
+      unit: base({ engaged_at_fight_start: true }),
+    });
+    expect(was.status).toBe("active");
+    expect(was.reasons.some((item) => item.includes("Overrun"))).toBe(true);
+    expect(evaluateUnit({ phase: "fight", unit: base() }).status).toBe("inactive");
+  });
+
+  it("avisos: avançou não começa ação e escolha CQ", () => {
+    const advanced = evaluateUnit({
+      phase: "shooting",
+      unit: base({ moved: "advanced" }),
+      weapons: [{ name: "Claws", kind: "ranged", keywords: ["ASSAULT"] }],
+    });
+    expect(advanced.reasons).toContain("Avançou: não começa ação neste turno");
+    const choice = evaluateUnit({
+      phase: "shooting",
+      unit: base(),
+      weapons: [
+        { name: "Rifle", kind: "ranged" },
+        { name: "Pistol", kind: "ranged", keywords: ["PISTOL"] },
+      ],
+    });
+    expect(choice.reasons).toContain("Escolha: CLOSE-QUARTERS ou as outras armas");
+  });
+
   it("trinta unidades ficam abaixo de 20 ms", () => {
     expect(evaluateMany(30)).toBeLessThan(20);
   });

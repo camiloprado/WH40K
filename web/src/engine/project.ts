@@ -22,6 +22,7 @@ export type LiveUnit = {
   charged: boolean;
   fought: boolean;
   engaged: boolean;
+  engaged_at_fight_start: boolean;
   on_action: boolean;
   action_name: string | null;
   battle_shocked: boolean;
@@ -187,6 +188,7 @@ function blank(id: number, name: string, round: number, previous?: LiveUnit): Li
     charged: false,
     fought: false,
     engaged: previous?.engaged ?? false,
+    engaged_at_fight_start: false,
     on_action: false,
     action_name: null,
     battle_shocked: previous?.battle_shocked ?? false,
@@ -230,6 +232,11 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     if (enteredMine) {
       for (const [id, prev] of Object.entries(state.live)) {
         state.live[Number(id)] = blank(Number(id), prev.name, state.round, prev);
+      }
+    }
+    if (state.phase === "fight") {
+      for (const unit of Object.values(state.live)) {
+        unit.engaged_at_fight_start = unit.engaged;
       }
     }
     return;

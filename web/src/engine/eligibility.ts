@@ -6,6 +6,7 @@ export type UnitSnapshot = {
   charged: boolean;
   fought: boolean;
   engaged: boolean;
+  engaged_at_fight_start?: boolean;
   on_action: boolean;
   battle_shocked: boolean;
   destroyed: boolean;
@@ -161,6 +162,13 @@ export function evaluateUnit(input: {
       var_lstAllowed = [];
     }
   }
+  if (input.phase === "movement") {
+    if (input.unit.engaged && input.unit.battle_shocked && input.unit.moved === "none") {
+      var_lstReasons.push(
+        "Em battle-shock: se recuar, só Desperate Escape — hazard roll por modelo (1–2 = mortal wound)",
+      );
+    }
+  }
   if (input.phase === "charge") {
     if (input.unit.engaged) {
       var_boolInactive = true;
@@ -180,9 +188,36 @@ export function evaluateUnit(input: {
       var_lstReasons.push("Em ação");
     }
   }
-  if (input.phase === "fight" && !input.unit.engaged && !input.unit.charged && !var_fnPermitted("fight_again")) {
-    var_boolInactive = true;
-    var_lstReasons.push("Não está em combate");
+  if (input.phase === "fight") {
+    const var_boolWasEngaged = !!input.unit.engaged_at_fight_start;
+    const var_boolCanFight =
+      input.unit.engaged || input.unit.charged || var_boolWasEngaged || var_fnPermitted("fight_again");
+    if (!var_boolCanFight) {
+      var_boolInactive = true;
+      var_lstReasons.push("Não está em combate");
+    } else if (!input.unit.engaged && (input.unit.charged || var_boolWasEngaged)) {
+      var_lstReasons.push("Overrun fight: pile-in extra antes de lutar");
+    }
+  }
+  if (input.unit.moved === "advanced" || input.unit.moved === "fell_back") {
+    var_lstReasons.push(
+      input.unit.moved === "advanced"
+        ? "Avançou: não começa ação neste turno"
+        : "Recuou: não começa ação neste turno",
+    );
+  }
+  if (
+    input.phase === "shooting" &&
+    !input.unit.engaged &&
+    !(input.unitKeywords ?? []).some((item) => item.toUpperCase() === "MONSTER" || item.toUpperCase() === "VEHICLE")
+  ) {
+    const var_boolHasCq = var_lstWeapons.some((item) => isCloseQuarters(item));
+    const var_boolHasOther = var_lstWeapons.some(
+      (item) => (item.kind === "ranged" || (item.kind !== "melee" && item.kind !== "wargear")) && !isCloseQuarters(item),
+    );
+    if (var_boolHasCq && var_boolHasOther) {
+      var_lstReasons.push("Escolha: CLOSE-QUARTERS ou as outras armas");
+    }
   }
   if (input.unit.battle_shocked) {
     var_lstReasons.push(
