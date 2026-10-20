@@ -6,6 +6,8 @@ export type WeaponProfile = {
   ap?: number | null;
   damage?: string | null;
   keywords?: string[];
+  /** Número de armas / modelos atacantes com este perfil. */
+  count?: number;
 };
 
 export type TargetProfile = {
@@ -40,6 +42,10 @@ function woundChance(strength: number, toughness: number): number {
   return 2 / 6;
 }
 
+/**
+ * Média aproximada: FNP antes do limite por W do modelo; multiplica pelo count do atacante;
+ * teto models×W. min(média do dano, W) superestima um pouco vs E[min(W, …)].
+ */
 export function expectedDamage(weapon: WeaponProfile, target: TargetProfile): number {
   const var_fltAttacks = diceAverage(weapon.attacks);
   const var_fltDamage = diceAverage(weapon.damage);
@@ -54,6 +60,10 @@ export function expectedDamage(weapon: WeaponProfile, target: TargetProfile): nu
     var_fltSaveFail = Math.min(var_fltSaveFail, var_fltInvulnFail);
   }
   const var_fltFnpKeep = target.fnp ? 1 - (7 - target.fnp) / 6 : 1;
-  const var_fltPerModel = var_fltAttacks * var_fltHit * var_fltWound * var_fltSaveFail * var_fltDamage * var_fltFnpKeep;
-  return Math.round(var_fltPerModel * (target.models ?? 1) * 10) / 10;
+  const var_intWounds = Math.max(1, target.wounds || 1);
+  const var_fltPerAttack = Math.min(var_fltDamage * var_fltFnpKeep, var_intWounds);
+  const var_intShooters = Math.max(1, weapon.count ?? 1);
+  const var_fltRaw = var_intShooters * var_fltAttacks * var_fltHit * var_fltWound * var_fltSaveFail * var_fltPerAttack;
+  const var_fltCap = (target.models ?? 1) * var_intWounds;
+  return Math.round(Math.min(var_fltRaw, var_fltCap) * 10) / 10;
 }

@@ -1154,7 +1154,8 @@ export function WeaponsScreen() {
     >
       <section className="card stack">
         <p className="muted">
-          Dano médio aproximado, sem keywords. <span className="hypothesis">aproximado</span>
+          Dano médio aproximado da unidade inteira (× count das armas), limitado ao W do alvo; sem keywords.{" "}
+          <span className="hypothesis">aproximado</span>
         </p>
         {!profiles.length && <p className="warn">Cadastre um perfil de alvo no catálogo para ver o dano esperado.</p>}
         {bundle.weapons?.some((item: any) => item.is_stub) && <p className="warn">Algumas armas não têm perfil numérico e aparecem como "—".</p>}
@@ -1164,7 +1165,7 @@ export function WeaponsScreen() {
               <th>Unidade</th>
               <th>Arma</th>
               <th>Keywords</th>
-              <th className="num">Dano médio</th>
+              <th className="num">Dano médio (unidade inteira)</th>
             </tr>
           </thead>
           <tbody>
@@ -1174,7 +1175,11 @@ export function WeaponsScreen() {
                   <td>{unit.datasheet_name}</td>
                   <td>{weapon.weapon_name}</td>
                   <td className="kw">{(weapon.keywords || []).join(" ")}</td>
-                  <td className="num mono">{chosen && !weapon.is_stub ? expectedDamage({ ...weapon, name: weapon.weapon_name }, chosen) : "—"}</td>
+                  <td className="num mono">
+                    {chosen && !weapon.is_stub
+                      ? expectedDamage({ ...weapon, name: weapon.weapon_name, count: weapon.count ?? 1 }, chosen)
+                      : "—"}
+                  </td>
                 </tr>
               )),
             )}
