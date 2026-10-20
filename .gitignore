@@ -19,6 +19,11 @@ web/dev-dist/
 web/test-results/
 web/playwright-report/
 web/.e2e-token
+# Scratch local de testes (não sobe; cópias sujas do Camilo)
+api/tests/test_guide_r1.py
+api/tests/test_project.local.py
+web/src/engine/project.local.test.ts
+fixtures/events/*.local.json
 # Playtest/QA local (não entra no repo)
 docs/qa/
 *.tsbuildinfo
