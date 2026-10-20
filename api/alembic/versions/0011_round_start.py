@@ -37,9 +37,14 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM rule_effects WHERE phase = 'round_start') THEN
+            RAISE EXCEPTION 'DB5: downgrade 0011 apagaria rule_effects round_start; restaure o snapshot (S3)';
+          END IF;
+        END $$;
         UPDATE games SET current_phase = 'command' WHERE current_phase = 'round_start';
         UPDATE game_turns SET phase = 'command' WHERE phase = 'round_start';
-        DELETE FROM rule_effects WHERE phase = 'round_start';
         ALTER TABLE games DROP CONSTRAINT IF EXISTS games_current_phase_check;
         ALTER TABLE games ADD CONSTRAINT games_current_phase_check
           CHECK (current_phase IN ('command','battle_shock','movement','shooting','charge','fight','end_of_turn'));

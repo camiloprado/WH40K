@@ -38,11 +38,12 @@ def main() -> None:
         for phase, text in CORE:
             ability = db.scalar(select(Ability).where(Ability.kind == "core", Ability.name == phase))
             if ability is None:
-                ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=True)
+                ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=False)
                 db.add(ability)
                 db.flush()
-            elif phase in ("battle_shock", "charge", "fight", "shooting"):
+            else:
                 ability.summary_user = text
+                ability.is_hypothesis = False
             exists = db.scalar(
                 select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
             )
@@ -56,12 +57,12 @@ def main() -> None:
                         "effect_kind": "reminder",
                         "owner_label": "Geral",
                         "effect_text": text,
-                        "is_hypothesis": True,
+                        "is_hypothesis": False,
                     },
                 )
-            elif phase in ("battle_shock", "charge", "fight", "shooting"):
+            else:
                 exists.effect_text = text
-                exists.is_hypothesis = True
+                exists.is_hypothesis = False
         faction = db.scalar(select(Faction).where(Faction.name == "Chaos - Chaos Daemons"))
         if faction is None:
             faction = Faction(name="Chaos - Chaos Daemons", source="user", accent_color="#6E2430")

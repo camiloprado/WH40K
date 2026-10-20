@@ -18,6 +18,9 @@ con_setPatchFields = {
     "destroyed",
     "in_reserves",
     "must_ingress",
+    "action_started_moved",
+    "snap_shooting",
+    "fall_back_mode",
     "lane",
 }
 con_setLanes = {"left", "center", "right", "home"}
@@ -114,6 +117,9 @@ def _blank(unit_id: int, name: str, round_no: int, previous: dict | None) -> dic
         "destroyed": bool(previous and previous["destroyed"]),
         "in_reserves": bool(previous and previous["in_reserves"]),
         "must_ingress": bool(previous and previous.get("must_ingress")),
+        "action_started_moved": None,
+        "snap_shooting": False,
+        "fall_back_mode": None,
         "lane": previous["lane"] if previous else "center",
         "overrides": [],
     }
@@ -203,6 +209,11 @@ def _apply(state: dict, event: dict) -> None:
         )
         return
     if kind == "phase_advanced":
+        state["warnings"] = [
+            item
+            for item in state["warnings"]
+            if item in ("reserves_destroyed", "reserves_over_50", "shadow_legacy")
+        ]
         turned_over = False
         if state["phase"] == "end_of_round":
             state["round"] = min(10, state["round"] + 1)
@@ -243,6 +254,7 @@ def _apply(state: dict, event: dict) -> None:
         if unit is None:
             state["warnings"].append("unknown_unit")
             return
+        was_action = bool(unit.get("on_action"))
         for key, value in (payload.get("patch") or {}).items():
             if key == "lane" and value not in LANES:
                 state["warnings"].append("bad_lane")
@@ -251,8 +263,16 @@ def _apply(state: dict, event: dict) -> None:
                 unit[key] = value
         if payload.get("overrides"):
             unit["overrides"].extend(payload["overrides"])
+            if any(item.get("key") == "overwatch" for item in payload["overrides"]):
+                unit["snap_shooting"] = True
         if unit.get("in_reserves") is False:
             unit["must_ingress"] = False
+        if not was_action and unit.get("on_action"):
+            unit["action_started_moved"] = unit.get("moved")
+        if was_action and not unit.get("on_action"):
+            unit["action_started_moved"] = None
+        if "moved" in (payload.get("patch") or {}) and unit.get("moved") != "fell_back":
+            unit["fall_back_mode"] = None
         return
     if kind == "cp_changed":
         var_strPlayer = payload.get("player") or state["player"]

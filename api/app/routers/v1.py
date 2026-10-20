@@ -136,7 +136,7 @@ class SyncEventIn(BaseModel):
     type: str = Field(min_length=1, max_length=64)
     payload: dict = Field(default_factory=dict)
     undoes_event_id: uuid.UUID | None = None
-    created_at: str
+    created_at: datetime
 
 
 class SyncIn(BaseModel):
@@ -202,7 +202,10 @@ def restore(body: dict, database: Session = Depends(db_session), _s=Depends(auth
     _confirm(body, "RESTAURAR")
     if "data" not in body:
         err(400, "invalid_input", "Backup ausente")
-    restore_backup(database, body["data"], _backup_dir())
+    try:
+        restore_backup(database, body["data"], _backup_dir())
+    except ValueError as exc:
+        err(422, "invalid_input", str(exc))
     return {"ok": True}
 
 
@@ -423,7 +426,7 @@ def games_sync(body: SyncIn, database: Session = Depends(db_session), _s=Depends
             "type": item.type,
             "payload": item.payload,
             "undoes_event_id": str(item.undoes_event_id) if item.undoes_event_id else None,
-            "created_at": item.created_at,
+            "created_at": item.created_at.isoformat(),
         }
         for item in body.events
     ]

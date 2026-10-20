@@ -117,8 +117,25 @@ def require_session(request: Request, db: Session) -> SessionRow:
     )
     if var_objExpires < var_objNow:
         err(401, "session_expired", "Sessão expirada")
-    var_objRow.last_seen_at = var_objNow
-    var_objRow.expires_at = var_objNow + timedelta(days=30)
+    # S7: teto absoluto de 30 dias a partir de created_at (não só sliding).
+    var_objCreated = (
+        var_objRow.created_at
+        if var_objRow.created_at.tzinfo
+        else var_objRow.created_at.replace(tzinfo=timezone.utc)
+    )
+    if var_objCreated + timedelta(days=30) < var_objNow:
+        err(401, "session_expired", "Sessão expirada")
+    var_objLast = (
+        var_objRow.last_seen_at
+        if var_objRow.last_seen_at.tzinfo
+        else var_objRow.last_seen_at.replace(tzinfo=timezone.utc)
+    )
+    if var_objNow - var_objLast >= timedelta(minutes=1):
+        var_objRow.last_seen_at = var_objNow
+    # Sliding window, mas nunca além do teto absoluto.
+    var_objCap = var_objCreated + timedelta(days=30)
+    var_objSlide = var_objNow + timedelta(days=30)
+    var_objRow.expires_at = min(var_objSlide, var_objCap)
     return var_objRow
 
 

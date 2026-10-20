@@ -42,14 +42,7 @@ def downgrade() -> None:
     op.execute(
         """
         DROP INDEX IF EXISTS uq_faction_round_states_phase;
-        -- Mantém uma linha por (game, round, player, key); preferir phase=command.
-        DELETE FROM faction_round_states a
-          USING faction_round_states b
-          WHERE a.ctid < b.ctid
-            AND a.game_id = b.game_id
-            AND a.round = b.round
-            AND a.player = b.player
-            AND a.state_key = b.state_key;
+        -- DB1: primeiro preferir phase=command; depois deduplicar por ctid.
         DELETE FROM faction_round_states
           WHERE phase IS DISTINCT FROM 'command'
             AND EXISTS (
@@ -60,6 +53,13 @@ def downgrade() -> None:
                 AND o.state_key = faction_round_states.state_key
                 AND o.phase = 'command'
             );
+        DELETE FROM faction_round_states a
+          USING faction_round_states b
+          WHERE a.ctid < b.ctid
+            AND a.game_id = b.game_id
+            AND a.round = b.round
+            AND a.player = b.player
+            AND a.state_key = b.state_key;
         ALTER TABLE faction_round_states
           DROP COLUMN IF EXISTS phase,
           DROP COLUMN IF EXISTS turn_player,

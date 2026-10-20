@@ -31,7 +31,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
-        DELETE FROM games WHERE list_version_id IS NULL;
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM games WHERE list_version_id IS NULL) THEN
+            RAISE EXCEPTION 'DB5: downgrade 0012 apagaria games sem lista; restaure o snapshot (S3)';
+          END IF;
+        END $$;
         ALTER TABLE games DROP CONSTRAINT IF EXISTS games_list_version_id_fkey;
         ALTER TABLE games ALTER COLUMN list_version_id SET NOT NULL;
         ALTER TABLE games

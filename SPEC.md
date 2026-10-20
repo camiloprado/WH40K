@@ -84,7 +84,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF18 | **Motor de elegibilidade** (cliente, offline): ativo/inativo/alerta por unidade e fase, com o motivo. Regras base + exceções de `rule_effects`. | 3 |
 | RF19 | **Lembretes:** Movement destaca quem não moveu; Shooting/Charge acinzentam inelegíveis; Fight lista engajadas/carregaram; End lembra de missões, secundárias e ações. | 3 |
 | RF20 | **Offline-first:** a partida vive no IndexedDB (event log); sync idempotente. | 3 |
-| RF21 | Checagem de armas (cliente, "aproximado"); média por ataque com FNP e teto W **exatos por face**; keywords Sustained/Lethal/Twin-linked/Torrent (Lethal+Sustained = `(h−c)·w+c+c·S·w`); multiplica pelo `wargear.count`; teto `models × W`; perfil incompleto → "—"; arredondamento só na UI. Chip opcional se houver mais de um loadout. | 4 |
+| RF21 | Checagem de armas (cliente, "aproximado"); média por ataque com FNP e teto W **exatos por face**; keywords Sustained/Lethal/Twin-linked/Torrent (Lethal+Sustained = `(h−c)·w+c+c·S·w`); multiplica pelo `wargear.count`; teto `models × W`; perfil incompleto → "—"; arredondamento só na UI. **Comparação de loadouts (B2) adiada para SPEC v2.** | 4 |
 | RF22 | Editor de mapa; PNG (pixelRatio 2) / HTML. | 5 |
 | RF23 | Re-import → nova versão; diff na leitura. | 6 |
 | RF24 | Backup/restore JSON (confirmação, snapshot antes, `setval`). | 0 |

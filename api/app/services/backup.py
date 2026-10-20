@@ -105,6 +105,9 @@ def export_backup(db: Session) -> dict:
 
 
 def restore_backup(db: Session, payload: dict, snapshot_dir: Path) -> None:
+    version = payload.get("backup_version")
+    if version != 1:
+        raise ValueError("backup_version inválido (esperado 1)")
     snapshot_dir.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     (snapshot_dir / f"pre-restore-{stamp}.json").write_text(

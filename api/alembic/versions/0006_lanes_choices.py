@@ -37,7 +37,12 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute(
         """
-        DELETE FROM game_events WHERE type = 'effect_chosen';
+        DO $$
+        BEGIN
+          IF EXISTS (SELECT 1 FROM game_events WHERE type = 'effect_chosen') THEN
+            RAISE EXCEPTION 'DB5: downgrade 0006 apagaria effect_chosen; restaure o snapshot (S3)';
+          END IF;
+        END $$;
         ALTER TABLE game_events DROP CONSTRAINT game_events_type_check;
         ALTER TABLE game_events ADD CONSTRAINT game_events_type_check CHECK (type IN (
           'game_started','phase_advanced','unit_state_set','cp_changed','stratagem_used','objective_set',

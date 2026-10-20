@@ -506,7 +506,11 @@ def sync_events(db: Session, game_id: uuid.UUID, events: list[dict]) -> dict:
             if target is None or target.game_id != game_id:
                 rejected.append({"id": item["id"], "reason": "undoes_event_id_foreign"})
                 continue
-        created = _parse_time(item["created_at"])
+        try:
+            created = _parse_time(item["created_at"])
+        except (TypeError, ValueError):
+            rejected.append({"id": item["id"], "reason": "created_at_invalid"})
+            continue
         row = GameEvent(
             id=uuid.UUID(item["id"]),
             game_id=game_id,
@@ -589,7 +593,7 @@ def _rebuild(db: Session, game: Game) -> None:
     game.cp_opponent = max(0, min(99, int(state["cp"]["opponent"] or 0)))
     game.vp_me = int(state["vp"]["me"])
     game.vp_opponent = int(state["vp"]["opponent"])
-    game.last_seq = len(rows)
+    game.last_seq = max((row.seq for row in rows), default=0)
     for turn in state["turns"]:
         db.add(
             GameTurn(
