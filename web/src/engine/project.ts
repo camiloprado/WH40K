@@ -270,7 +270,8 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
         }
       } else {
         state.player = state.player === "me" ? "opponent" : "me";
-        state.phase = "command";
+        // v2: 2º turno vai direto a Command; v1: round_start em cada turno (C17).
+        state.phase = state.phasesV >= 2 ? "command" : "round_start";
         turnedOver = true;
       }
     }
@@ -360,7 +361,9 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     const player = payload.player === "opponent" ? "opponent" : "me";
     const limit = payload.use_limit || "per_phase";
     const sameName = state.stratagem_uses.filter((item) => item.stratagem_name === name && item.player === player);
-    const phaseHit = sameName.some((item) => item.round === state.round && item.phase === state.phase);
+    const phaseHit = sameName.some(
+      (item) => item.round === state.round && item.phase === state.phase && item.turn_player === state.player,
+    );
     if (phaseHit && !payload.limit_overridden) {
       state.warnings.push("stratagem_limit");
       return;
@@ -386,6 +389,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
           item.player === player &&
           item.phase === state.phase &&
           item.round === state.round &&
+          item.turn_player === state.player &&
           item.target_list_unit_id === targetId,
       );
       if (sameTarget) state.warnings.push("stratagem_same_target");

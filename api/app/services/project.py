@@ -215,7 +215,8 @@ def _apply(state: dict, event: dict) -> None:
                         turned_over = True
                 else:
                     state["player"] = other
-                    state["phase"] = "command"
+                    # v2: 2º turno vai direto a Command; v1: round_start em cada turno (C17).
+                    state["phase"] = "command" if state.get("phases_v", 1) >= 2 else "round_start"
                     turned_over = True
         if turned_over:
             _roll(state)
@@ -462,7 +463,10 @@ def _limit_hit(state: dict, name: str, player: str, limit: str) -> bool:
         )
     if limit == "per_phase":
         return any(
-            item["round"] == state["round"] and item["phase"] == state["phase"] for item in rows
+            item["round"] == state["round"]
+            and item["phase"] == state["phase"]
+            and item.get("turn_player") == state["player"]
+            for item in rows
         )
     return False
 
@@ -488,6 +492,7 @@ def _stratagem(state: dict, event: dict) -> None:
             and item["player"] == player
             and item["phase"] == state["phase"]
             and item["round"] == state["round"]
+            and item.get("turn_player") == state["player"]
             for item in state["stratagem_uses"]
         ):
             state["warnings"].append("stratagem_same_target")

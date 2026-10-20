@@ -19,9 +19,16 @@ import {
   type Projection,
   type Zone,
 } from "./engine/project";
-import { canStartAction, evaluateUnit, type Eligibility, type Moved } from "./engine/eligibility";
+import {
+  canStartAction,
+  conditionLabel,
+  evaluateUnit,
+  guideMatch,
+  type Eligibility,
+  type Moved,
+} from "./engine/eligibility";
 import { flushSync, onSyncStatus, syncRejectedCount, syncServerDown } from "./sync";
-import { HypothesisBadge } from "./components";
+import { ConditionalBadge, HypothesisBadge } from "./components";
 
 const PHASE_NAMES: Record<string, string> = {
   round_start: "Início",
@@ -67,6 +74,8 @@ export type PhaseEffect = {
   effect_text: string;
   timing: string;
   is_hypothesis: boolean;
+  is_conditional?: boolean;
+  condition_text?: string;
   unit_ids: number[];
   choice_options: string[];
   choice_count: number | null;
@@ -76,15 +85,29 @@ export type PhaseEffect = {
 type Card = { unit: any; live: LiveUnit; result: Eligibility; zone: Zone; place: Place; order: number; effects: PhaseEffect[]; chosen: string[] };
 type ChoiceLookup = (effect: PhaseEffect, unitId: number | null) => Choice | undefined;
 
-function phaseEffects(bundle: any, phase: string, mine: boolean): PhaseEffect[] {
+function phaseEffects(
+  bundle: any,
+  phase: string,
+  mine: boolean,
+  shadowAreas: string[],
+  shadowComplete: boolean,
+): PhaseEffect[] {
   const abilities = new Map<number, any>((bundle.abilities || []).map((item: any) => [item.id, item]));
   const units: any[] = bundle.units || [];
+  const facts = {
+    shadow_areas: shadowAreas.length ? shadowAreas : ["own_dz"],
+    shadow_areas_complete: shadowComplete,
+    turn_owner: mine ? "own" : "opponent",
+    phase,
+  };
   return (bundle.rule_effects || [])
     .filter((effect: any) => effect.effect_kind !== "stratagem")
     .filter((effect: any) => effect.phase === phase || effect.phase === "any")
     .filter((effect: any) => effect.turn_owner === "both" || (effect.turn_owner === "opponent") !== mine)
     .map((effect: any) => {
       const ability = abilities.get(effect.ability_id);
+      const gate = guideMatch(effect.condition_json || {}, facts);
+      if (!gate.include) return null;
       let unitIds: number[] = effect.unit_ids || [];
       if (!unitIds.length && ability && PERSONAL_KINDS.has(ability.kind) && ability.datasheet_id) {
         unitIds = units.filter((unit) => unit.datasheet_id === ability.datasheet_id).map((unit) => unit.id);
@@ -97,13 +120,16 @@ function phaseEffects(bundle: any, phase: string, mine: boolean): PhaseEffect[] 
         effect_text: effect.effect_text,
         timing: effect.timing || "during",
         is_hypothesis: Boolean(effect.is_hypothesis || ability?.is_hypothesis),
+        is_conditional: gate.conditional,
+        condition_text: gate.conditional ? conditionLabel(effect.condition_json || {}) : "",
         unit_ids: unitIds,
         choice_options: effect.choice_options || [],
         choice_count: effect.choice_count ?? null,
         choice_scope: effect.choice_scope || "turn",
-      };
+      } as PhaseEffect;
     })
-    .sort((a: PhaseEffect, b: PhaseEffect) => ["start", "during", "end"].indexOf(a.timing) - ["start", "during", "end"].indexOf(b.timing));
+    .filter(Boolean)
+    .sort((a: PhaseEffect, b: PhaseEffect) => ["start", "during", "end"].indexOf(a.timing) - ["start", "during", "end"].indexOf(b.timing)) as PhaseEffect[];
 }
 type Menu = { x: number; y: number; unitId: number } | null;
 
@@ -201,7 +227,12 @@ export function GameScreen() {
   const projection = useMemo(() => applyEvents(events || []), [events]);
   const phase = projection.phase;
   const phaseList = projection.phasesV >= 2 ? [...PHASES_V2] : [...PHASES];
-  const effectsNow = useMemo(() => (bundle ? phaseEffects(bundle, phase, projection.player === "me") : []), [bundle, phase, projection.player]);
+  const effectsNow = useMemo(() => {
+    if (!bundle) return [];
+    const shadow = shadowNow(projection);
+    const areas = ["own_dz", ...(shadow.nml ? ["nml"] : []), ...(shadow.opp_dz ? ["opp_dz"] : [])];
+    return phaseEffects(bundle, phase, projection.player === "me", areas, shadow.known);
+  }, [bundle, phase, projection]);
 
   const cards: Card[] = useMemo(() => {
     if (!bundle) return [];
@@ -1208,6 +1239,7 @@ function EffectRowLive({ effect, chosen, onChoose }: { effect: PhaseEffect; chos
         <strong>{effect.ability_name}</strong>
         <span className="muted mono">{TIMING_NAMES[effect.timing] || effect.timing}</span>
         <HypothesisBadge on={effect.is_hypothesis} />
+        <ConditionalBadge on={effect.is_conditional} text={effect.condition_text} />
       </header>
       <p>{effect.effect_text}</p>
       {hasChoice && chosen && !editing && (
@@ -1524,7 +1556,11 @@ function Stratagems({
   const later = all.filter((item: any) => !now.includes(item));
   if (!all.length) return null;
   const cp = projection.cp.me;
-  const targets = cards.filter((card) => !card.live.destroyed && (card.result.status === "active" || card.result.status === "warn"));
+  const onTable = cards.filter((card) => !card.live.destroyed && !card.live.in_reserves);
+  const targets = [
+    ...onTable.filter((card) => card.result.status === "active" || card.result.status === "warn"),
+    ...onTable.filter((card) => card.result.status !== "active" && card.result.status !== "warn"),
+  ];
   const confirm = (item: any, used: boolean, short: boolean, target: number | null) => {
     push(
       "stratagem_used",
@@ -1551,7 +1587,12 @@ function Stratagems({
   };
   const render = (item: any, markUsed: boolean) => {
     const used = projection.stratagem_uses.some(
-      (use) => use.stratagem_name === item.name && use.phase === projection.phase && use.round === projection.round && use.player === "me",
+      (use) =>
+        use.stratagem_name === item.name &&
+        use.phase === projection.phase &&
+        use.round === projection.round &&
+        use.turn_player === projection.player &&
+        use.player === "me",
     );
     const cost = item.cp_cost || 0;
     return (
