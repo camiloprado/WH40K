@@ -157,8 +157,8 @@ table.units td.num { text-align: right; }
 .table-app {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr) 340px;
-  height: calc(100dvh - var(--nav-h));
   height: calc(100vh - var(--nav-h));
+  height: calc(100dvh - var(--nav-h));
   background: radial-gradient(ellipse at center, #161b23 0%, var(--bg) 75%);
 }
 .phase-rail { display: flex; flex-direction: column; gap: 4px; padding: 12px 8px; background: #0b0d11; border-right: 1px solid var(--line); }
@@ -251,7 +251,7 @@ table.units td.num { text-align: right; }
 .panel h2 { margin: 0; }
 .panel p { margin: 0; }
 .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-.close { font-size: 20px; min-width: 32px; min-height: 32px; padding: 0; }
+.close { font-size: 20px; min-width: 44px; min-height: 44px; padding: 0; }
 .inspector { border-color: var(--phase); }
 .status-line { font-size: 13px; padding: 6px 8px; border-radius: 6px; background: var(--surface-2); }
 .status-line.inactive { color: #ffb3b3; }
@@ -259,7 +259,7 @@ table.units td.num { text-align: right; }
 .status-line.warn { color: var(--warn); }
 .action-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .toggles { display: flex; flex-wrap: wrap; gap: 6px; }
-.toggle { font-size: 12px; min-height: 30px; border-radius: 999px; }
+.toggle { font-size: 12px; min-height: 44px; min-width: 44px; border-radius: 999px; }
 .toggle.on { background: color-mix(in srgb, var(--phase) 25%, transparent); border-color: var(--phase); }
 .weapons { list-style: none; margin: 0; padding: 0; font-size: 13px; display: flex; flex-direction: column; gap: 4px; }
 .weapons li { display: flex; justify-content: space-between; gap: 8px; padding: 4px 6px; border-radius: 4px; background: #1c2028; }
@@ -276,7 +276,7 @@ table.units td.num { text-align: right; }
 .choice-options { display: flex; flex-wrap: wrap; gap: 6px; }
 button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: underline; border: 0; background: transparent; }
 .zone-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
-.zone-buttons button { font-size: 12px; min-height: 30px; }
+.zone-buttons button { font-size: 12px; min-height: 44px; min-width: 44px; }
 .shadow { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 8px; }
 .objectives { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
 .objective { font-family: "JetBrains Mono", monospace; padding: 0; }
@@ -294,7 +294,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
 .log-meta { flex: none; width: 52px; font-size: 11px; }
 
 .context-menu { position: fixed; z-index: 50; width: 230px; background: #1b1f27; border: 1px solid #3a4150; border-radius: 10px; padding: 6px; box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6); display: flex; flex-direction: column; }
-.context-menu button { border: 0; background: transparent; text-align: left; min-height: 32px; border-radius: 6px; font-size: 13px; }
+.context-menu button { border: 0; background: transparent; text-align: left; min-height: 44px; border-radius: 6px; font-size: 13px; }
 .context-menu button:hover { background: #2a303c; }
 .context-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; width: 100%; }
 .menu-title { margin: 4px 8px 6px; font-size: 12px; color: var(--muted); }
@@ -315,12 +315,29 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .topnav { overflow-x: auto; }
   .split, .split-even { grid-template-columns: 1fr; }
   .page { padding: 14px; }
-  .table-app { display: flex; flex-direction: column; height: auto; min-height: calc(100dvh - var(--nav-h)); min-height: calc(100vh - var(--nav-h)); padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
-  .phase-rail { position: fixed; left: 0; right: 0; bottom: 0; flex-direction: row; z-index: 30; padding: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); overflow-x: hidden; border-right: 0; border-top: 1px solid var(--line); align-items: center; gap: 6px; }
+  .table-app { display: flex; flex-direction: column; height: auto; min-height: calc(100vh - var(--nav-h)); min-height: calc(100dvh - var(--nav-h)); padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .phase-rail { position: fixed; left: 0; right: 0; bottom: 0; flex-direction: row; z-index: 30; max-height: 76px; padding: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); overflow: visible; border-right: 0; border-top: 1px solid var(--line); align-items: center; gap: 6px; }
   .phase-rail .phase-step { display: none; }
   .phase-rail .phase-current { font-weight: 700; padding: 0 8px; }
   .phase-rail .phase-menu { position: relative; }
   .phase-rail .phase-menu summary { list-style: none; min-height: 48px; padding: 8px 12px; cursor: pointer; }
+  .phase-rail .phase-menu-list { display: none; }
+  .phase-rail .phase-menu[open] .phase-menu-list {
+    display: flex;
+    flex-direction: column;
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 0;
+    min-width: 180px;
+    max-height: 50vh;
+    overflow: auto;
+    background: #0b0d11;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 6px;
+    z-index: 40;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  }
   .phase-rail .phase-menu[open] .phase-step { display: block; width: 100%; text-align: left; }
   .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; }
   .sheet-confirm { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
@@ -328,7 +345,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .phase-step { flex: none; font-size: 12px; padding: 0 8px; }
   .phase-step .dot { display: none; }
   .phase-step.past { text-decoration: none; }
-  .phase-rail .next { margin: 0 0 0 auto; flex: none; min-height: 48px; }
+  .phase-rail .next { margin: 0 0 0 auto; flex: none; min-height: 48px; position: sticky; right: 0; }
   .board, .board-scroll { overflow: visible; padding: 8px; }
   .board-scroll { padding: 0; }
   .zone-row, .lanes { grid-template-columns: 1fr; }
@@ -339,7 +356,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .topnav .brand { white-space: nowrap; font-size: 14px; }
   .player-bar { padding: 6px 8px; }
   .unit-card.tapped { transform: none; }
-  .counter .step, .zone-head button, .pip, .chip, .ghost, .player-extra button { min-height: 48px; min-width: 48px; }
+  .counter .step, .zone-head button, .chip, .ghost, .player-extra button { min-height: 48px; min-width: 48px; }
   .counter { gap: 8px; }
   .counter-value { font-size: 18px; min-width: 52px; }
   .player-name { min-width: 0; }
