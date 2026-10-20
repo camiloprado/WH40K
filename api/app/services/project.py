@@ -202,11 +202,37 @@ def _apply(state: dict, event: dict) -> None:
             unit["overrides"].extend(payload["overrides"])
         return
     if kind == "cp_changed":
+        var_strPlayer = payload.get("player") or state["player"]
+        var_intDelta = int(payload.get("delta") or 0)
+        var_strReason = payload.get("reason") or "manual"
+        if var_strReason == "command_phase":
+            var_strReason = "core_cp"
+        if var_strReason == "core_cp" and state["phase"] == "command":
+            var_boolTwice = any(
+                item["round"] == state["round"]
+                and item["phase"] == "command"
+                and item["player"] == var_strPlayer
+                and item["reason"] == "core_cp"
+                for item in state["ledger"]
+            )
+            if var_boolTwice:
+                state["warnings"].append("core_cp_twice")
+        if var_intDelta > 0 and var_strReason != "core_cp" and payload.get("event_rules"):
+            var_intExtras = sum(
+                1
+                for item in state["ledger"]
+                if item["round"] == state["round"]
+                and item["player"] == var_strPlayer
+                and int(item["delta"]) > 0
+                and item["reason"] != "core_cp"
+            )
+            if var_intExtras >= 1:
+                state["warnings"].append("extra_cp_cap")
         _change_cp(
             state,
-            payload.get("player") or state["player"],
-            int(payload.get("delta") or 0),
-            payload.get("reason") or "manual",
+            var_strPlayer,
+            var_intDelta,
+            var_strReason,
             bool(payload.get("override")),
             event,
             None,

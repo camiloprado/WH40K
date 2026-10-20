@@ -76,7 +76,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF10 | **Partida:** criar a partir de uma versão (snapshot), com oponente, missão (texto), quem começa e CP inicial. | 3 |
 | RF11 | **Estado por unidade/turno:** movimento (`none/normal/advanced/fell_back/remained`), atirou, carregou, lutou, em ação/missão, Battle-shock, destruída. Um toque marca; desfazer. | 3 |
 | RF12 | **Fases:** avançar CMD → BS → MOV → SHT → CHG → FGT → END e alternar o jogador; registra `game_turns`. | 3 |
-| RF13 | **CP:** saldo, +1 na Command (editável), gastos, ajustes e histórico. | 3 |
+| RF13 | **Gain Core CP:** em toda Command, dos dois jogadores, cada um ganha +1 (Core 08.02). Editável; aviso se repetir. Opcional: teto de 1 CP extra por rodada (Event Companion 1.3). | 3 |
 | RF14 | **Stratagems:** os usáveis na fase atual; registrar o uso com CP; limites (1× por fase/turno/batalha) com aviso e override. | 3 |
 | RF15 | **Objetivos:** controle por rodada (meu/oponente/contestado/ninguém); VP primária e secundárias. | 3 |
 | RF16 | **Shadow of Chaos:** na Command, pergunta quantos objetivos controla e se o tabuleiro inteiro está em Shadow; registra e lista os efeitos dependentes (regra como dado; HIPÓTESE quanto ao texto da 11ª). | 3 |

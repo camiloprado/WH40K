@@ -66,6 +66,7 @@ export type Projection = {
   attachments: any[];
   choices: Choice[];
   log: LogEntry[];
+  cpLedger: { round: number; turn_player: string; phase: string; player: string; reason: string; delta: number }[];
 };
 
 export type LogEntry = {
@@ -144,6 +145,7 @@ function empty(): Projection & { started: boolean } {
     attachments: [],
     choices: [],
     log: [],
+    cpLedger: [],
     started: false,
   };
 }
@@ -235,7 +237,40 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "cp_changed") {
-    changeCp(state, payload.player || state.player, Number(payload.delta || 0), Boolean(payload.override));
+    const var_strPlayer = payload.player || state.player;
+    const var_intDelta = Number(payload.delta || 0);
+    let var_strReason = String(payload.reason || "manual");
+    if (var_strReason === "command_phase") var_strReason = "core_cp";
+    if (var_strReason === "core_cp" && state.phase === "command") {
+      const var_boolTwice = state.cpLedger.some(
+        (item) =>
+          item.round === state.round &&
+          item.turn_player === state.player &&
+          item.phase === "command" &&
+          item.player === var_strPlayer &&
+          item.reason === "core_cp",
+      );
+      if (var_boolTwice) state.warnings.push("core_cp_twice");
+    }
+    if (
+      var_intDelta > 0 &&
+      var_strReason !== "core_cp" &&
+      payload.event_rules
+    ) {
+      const var_intExtras = state.cpLedger.filter(
+        (item) => item.round === state.round && item.player === var_strPlayer && item.delta > 0 && item.reason !== "core_cp",
+      ).length;
+      if (var_intExtras >= 1) state.warnings.push("extra_cp_cap");
+    }
+    if (!changeCp(state, var_strPlayer, var_intDelta, Boolean(payload.override))) return;
+    state.cpLedger.push({
+      round: state.round,
+      turn_player: state.player,
+      phase: state.phase,
+      player: var_strPlayer,
+      reason: var_strReason,
+      delta: var_intDelta,
+    });
     return;
   }
   if (event.type === "stratagem_used") {

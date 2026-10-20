@@ -371,7 +371,9 @@ export function GameScreen() {
           active={!mine}
           cp={projection.cp.opponent}
           vp={projection.vp.opponent}
-          onCp={(delta) => push("cp_changed", { delta, player: "opponent", reason: "manual" }, `CP do oponente ${delta > 0 ? "+1" : "−1"}`)}
+          onCp={(delta) =>
+            push("cp_changed", { delta, player: "opponent", reason: "manual", event_rules: false }, `CP do oponente ${delta > 0 ? "+1" : "−1"}`)
+          }
           onVp={(delta) => push("vp_scored", { player: "opponent", kind: "other", label: "Ajuste", vp: delta }, `VP do oponente ${delta > 0 ? "+1" : "−1"}`)}
         />
 
@@ -1025,6 +1027,7 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
   const [whole, setWhole] = useState(false);
   const [vp, setVp] = useState(5);
   const [kind, setKind] = useState<"primary" | "secondary">("primary");
+  const [eventRules, setEventRules] = useState(false);
   const current = projection.shadow.find((item) => item.round === projection.round && item.player === "me");
   const pendingShock = cards.filter(
     (item) => item.zone === "table" && (item.live.below_half || item.live.battle_shocked),
@@ -1038,27 +1041,62 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
       </section>
     );
   }
-  if (phase === "command" && mine) {
+  if (phase === "command") {
     return (
       <section className="panel">
-        <h2>Command</h2>
-        <button className="primary wide" onClick={() => push("cp_changed", { delta: 1, reason: "command_phase", player: "me" }, "CP +1 da Command")}>
-          Receber CP da fase (+1)
+        <h2>Command {mine ? "(seu turno)" : "(turno do oponente)"}</h2>
+        <button
+          className="primary wide"
+          onClick={async () => {
+            await push("cp_changed", { delta: 1, reason: "core_cp", player: "me", event_rules: eventRules }, "Core CP +1 (você)");
+            await push(
+              "cp_changed",
+              { delta: 1, reason: "core_cp", player: "opponent", event_rules: eventRules },
+              "Core CP +1 (oponente)",
+            );
+          }}
+        >
+          Gain Core CP (+1 para cada)
         </button>
-        <div className="shadow">
-          <p>
-            Shadow of Chaos <HypothesisBadge on />
-          </p>
-          <label className="row">
-            Objetivos em Shadow
-            <input className="mono narrow" type="number" min={0} max={20} value={current?.objectives_controlled ?? shadow} onChange={(event) => setShadow(Number(event.target.value))} />
-          </label>
-          <label className="row">
-            <input type="checkbox" checked={current?.whole_board ?? whole} onChange={(event) => setWhole(event.target.checked)} />
-            Tabuleiro todo em Shadow
-          </label>
-          <button onClick={() => push("shadow_set", { player: "me", objectives_controlled: shadow, whole_board: whole }, "Shadow registrado")}>Registrar Shadow</button>
-        </div>
+        <label className="row">
+          <input type="checkbox" checked={eventRules} onChange={(event) => setEventRules(event.target.checked)} />
+          Regras de evento (aviso se passar de 1 CP extra na rodada)
+        </label>
+        {projection.warnings.includes("core_cp_twice") && (
+          <p className="confirm-warn">Core CP já foi marcado nesta Command.</p>
+        )}
+        {eventRules && projection.warnings.includes("extra_cp_cap") && (
+          <p className="confirm-warn">Mais de 1 CP extra nesta rodada (Event Companion).</p>
+        )}
+        {mine && (
+          <div className="shadow">
+            <p>
+              Shadow of Chaos <HypothesisBadge on />
+            </p>
+            <label className="row">
+              Objetivos em Shadow
+              <input
+                className="mono narrow"
+                type="number"
+                min={0}
+                max={20}
+                value={current?.objectives_controlled ?? shadow}
+                onChange={(event) => setShadow(Number(event.target.value))}
+              />
+            </label>
+            <label className="row">
+              <input type="checkbox" checked={current?.whole_board ?? whole} onChange={(event) => setWhole(event.target.checked)} />
+              Tabuleiro todo em Shadow
+            </label>
+            <button
+              onClick={() =>
+                push("shadow_set", { player: "me", objectives_controlled: shadow, whole_board: whole }, "Shadow registrado")
+              }
+            >
+              Registrar Shadow
+            </button>
+          </div>
+        )}
       </section>
     );
   }
@@ -1066,7 +1104,7 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
     return (
       <section className="panel">
         <h2>Battle-shock</h2>
-        <p className="muted">Selecione a unidade para marcar Passou ou Falhou. Marque "Abaixo da metade" no inspetor para ela aparecer aqui.</p>
+        <p className="muted">Lista quem está em battle-shock ou na metade da força ou abaixo. Marque Passou ou Falhou.</p>
         {pendingShock.map((item) => (
           <div key={item.unit.id} className="row between">
             <span>{item.unit.datasheet_name}</span>
