@@ -6,6 +6,17 @@ COPY alembic ./alembic
 COPY alembic.ini ./
 RUN pip install --no-cache-dir --prefix=/install .
 
+FROM python:3.12-slim AS test
+WORKDIR /app
+COPY pyproject.toml ./
+COPY app ./app
+COPY alembic ./alembic
+COPY alembic.ini ./
+COPY tests ./tests
+RUN pip install --no-cache-dir -e ".[dev]"
+ENV APP_ENV=test
+CMD ["pytest", "-q"]
+
 FROM python:3.12-slim
 RUN useradd --create-home --uid 1000 app \
   && mkdir -p /app/data /app/backups \

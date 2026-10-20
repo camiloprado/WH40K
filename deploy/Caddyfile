@@ -16,6 +16,12 @@
 		Permissions-Policy "camera=(), microphone=(), geolocation=()"
 		-Server
 	}
+	handle /api/v1/restore {
+		request_body {
+			max_size 20MB
+		}
+		reverse_proxy api:8000
+	}
 	handle /api/* {
 		reverse_proxy api:8000
 	}

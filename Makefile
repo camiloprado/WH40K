@@ -26,10 +26,10 @@ backup:
 	$(DB) pg_dump -U wh40k wh40k > backups/wh40k-$$(date +%Y%m%d%H%M%S).dump
 
 restore-test:
-	$(API) python -m pytest -q tests/test_restore.py
+	$(COMPOSE) --profile test run --rm api-test pytest -q tests/test_restore.py
 
 test:
-	$(API) python -m pytest -q
+	$(COMPOSE) --profile test run --rm api-test
 	cd web && npm test
 
 e2e:

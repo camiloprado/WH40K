@@ -44,6 +44,21 @@ services:
       - caddydata:/data
     restart: unless-stopped
 
+  api-test:
+    profiles: ["test"]
+    build:
+      context: ./api
+      target: test
+    environment:
+      APP_ENV: test
+      DATABASE_URL: postgresql+psycopg://wh40k:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/wh40k
+      TEST_DB_SERVER: postgresql://wh40k:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432
+      APP_TOKEN_HASH: ${APP_TOKEN_HASH:-}
+      TOKEN_HASH_FILE: /tmp/missing-token-hash
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   pgdata:
   caddydata:

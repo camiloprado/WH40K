@@ -120,7 +120,7 @@ class SecurityMiddleware(BaseHTTPMiddleware):
                 content={"detail": "Host não permitido", "code": "host_not_allowed"},
             )
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
-            var_intLimit = 20 * 1024 * 1024 if request.url.path.endswith("/restore") else 204800
+            var_intLimit = 20 * 1024 * 1024 if request.url.path == "/api/v1/restore" else 204800
             var_strLen = request.headers.get("content-length")
             if var_strLen is not None:
                 try:
