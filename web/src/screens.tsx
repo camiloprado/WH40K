@@ -1176,9 +1176,18 @@ export function WeaponsScreen() {
                   <td>{weapon.weapon_name}</td>
                   <td className="kw">{(weapon.keywords || []).join(" ")}</td>
                   <td className="num mono">
-                    {chosen && !weapon.is_stub
-                      ? expectedDamage({ ...weapon, name: weapon.weapon_name, count: weapon.count ?? 1 }, chosen)
-                      : "—"}
+                    {(() => {
+                      if (!chosen || weapon.is_stub) return "—";
+                      const raw = expectedDamage(
+                        { ...weapon, name: weapon.weapon_name, count: weapon.count ?? 1 },
+                        chosen,
+                      );
+                      return raw == null ? (
+                        <span title="perfil incompleto">—</span>
+                      ) : (
+                        raw.toFixed(1)
+                      );
+                    })()}
                   </td>
                 </tr>
               )),
