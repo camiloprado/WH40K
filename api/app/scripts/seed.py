@@ -310,7 +310,7 @@ def _seed_core_stratagems(db, detachment_id: int) -> None:
 
 def _seed_daemonic_invulnerability(db, detachment_id: int) -> None:
     name = "Daemonic Invulnerability"
-    text = "No Shooting do oponente: gaste 1 CP; ataques contra um Daemon seu ignoram AP reais (só AP 0) até o fim da fase."
+    text = "Alvo seu rerrola salvamentos invulneráveis de 1 até o fim da fase (Daemons p7)."
     ability = db.scalar(select(Ability).where(Ability.kind == "stratagem", Ability.name == name))
     if ability is None:
         ability = Ability(
@@ -330,6 +330,7 @@ def _seed_daemonic_invulnerability(db, detachment_id: int) -> None:
         ability.summary_user = text
         ability.detachment_id = detachment_id
         ability.cp_cost = 1
+        ability.use_limit = "per_phase"
         ability.usable_turn = "opponent"
         ability.is_hypothesis = False
     exists = db.scalar(
@@ -349,6 +350,54 @@ def _seed_daemonic_invulnerability(db, detachment_id: int) -> None:
     else:
         exists.effect_text = text
         exists.turn_owner = "opponent"
+        exists.is_hypothesis = False
+    _seed_realm_of_chaos(db, detachment_id)
+
+
+def _seed_realm_of_chaos(db, detachment_id: int) -> None:
+    """Daemonic Incursion — Realm of Chaos (Daemons p7). Pré-req de must_ingress (C14)."""
+    name = "The Realm of Chaos"
+    text = "No fim do turno do oponente: 1 CP; uma unidade sua (não engajada) volta à reserva Strategic; no próximo Movement ela deve fazer ingress (Daemons p7)."
+    ability = db.scalar(select(Ability).where(Ability.kind == "stratagem", Ability.name == name))
+    if ability is None:
+        ability = Ability(
+            kind="stratagem",
+            detachment_id=detachment_id,
+            name=name,
+            cp_cost=1,
+            use_limit="per_phase",
+            usable_turn="opponent",
+            summary_user=text,
+            is_hypothesis=False,
+            source="user",
+        )
+        db.add(ability)
+        db.flush()
+    else:
+        ability.summary_user = text
+        ability.detachment_id = detachment_id
+        ability.cp_cost = 1
+        ability.use_limit = "per_phase"
+        ability.usable_turn = "opponent"
+        ability.is_hypothesis = False
+    exists = db.scalar(
+        select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == "end_of_turn")
+    )
+    payload = {
+        "phase": "end_of_turn",
+        "timing": "end",
+        "turn_owner": "opponent",
+        "effect_kind": "stratagem",
+        "owner_label": "Daemonic Incursion",
+        "effect_text": text,
+        "is_hypothesis": False,
+    }
+    if exists is None:
+        upsert_effect(db, ability.id, payload)
+    else:
+        exists.effect_text = text
+        exists.turn_owner = "opponent"
+        exists.timing = "end"
         exists.is_hypothesis = False
 
 
