@@ -1026,7 +1026,9 @@ function PhaseTools({ phase, mine, projection, bundle, cards, push }: { phase: s
   const [vp, setVp] = useState(5);
   const [kind, setKind] = useState<"primary" | "secondary">("primary");
   const current = projection.shadow.find((item) => item.round === projection.round && item.player === "me");
-  const pendingShock = cards.filter((item) => item.zone === "table" && item.live.below_half && !item.live.battle_shocked);
+  const pendingShock = cards.filter(
+    (item) => item.zone === "table" && (item.live.below_half || item.live.battle_shocked),
+  );
 
   if (phase === "round_start") {
     return (

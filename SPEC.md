@@ -80,7 +80,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF14 | **Stratagems:** os usáveis na fase atual; registrar o uso com CP; limites (1× por fase/turno/batalha) com aviso e override. | 3 |
 | RF15 | **Objetivos:** controle por rodada (meu/oponente/contestado/ninguém); VP primária e secundárias. | 3 |
 | RF16 | **Shadow of Chaos:** na Command, pergunta quantos objetivos controla e se o tabuleiro inteiro está em Shadow; registra e lista os efeitos dependentes (regra como dado; HIPÓTESE quanto ao texto da 11ª). | 3 |
-| RF17 | **Battle-shock:** lista quem testar, registra passou/falhou; falhou → `battle_shocked` até a próxima Command do mesmo jogador. | 3 |
+| RF17 | **Battle-shock:** na Command, testa quem está em battle-shock **ou** na metade da força ou abaixo; passou → sai do battle-shock; falhou → continua ou entra. O estado **não** é limpo ao trocar de turno (Core 08.03). | 3 |
 | RF18 | **Motor de elegibilidade** (cliente, offline): ativo/inativo/alerta por unidade e fase, com o motivo. Regras base + exceções de `rule_effects`. | 3 |
 | RF19 | **Lembretes:** Movement destaca quem não moveu; Shooting/Charge acinzentam inelegíveis; Fight lista engajadas/carregaram; End lembra de missões, secundárias e ações. | 3 |
 | RF20 | **Offline-first:** a partida vive no IndexedDB (event log); sync idempotente. | 3 |

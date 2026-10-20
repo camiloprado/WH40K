@@ -126,7 +126,7 @@ def test_stratagem_limit_and_override():
     assert state["cp"]["me"] == 0
 
 
-def test_battle_shock_clears_on_next_command():
+def test_battle_shock_persists_until_passed():
     start = started()
     events = [
         start,
@@ -145,7 +145,18 @@ def test_battle_shock_clears_on_next_command():
     assert state["player"] == "me"
     assert state["phase"] == "command"
     assert state["round"] == 2
+    assert state["live"][1]["battle_shocked"] is True
+    events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:02:00Z"))
+    seq += 1
+    events.append(
+        ev(seq, "battleshock_result", {"list_unit_id": 1, "passed": True}, f"2026-10-15T12:02:01Z")
+    )
+    state = apply_events(events)
     assert state["live"][1]["battle_shocked"] is False
+    pass_id = events[-1]["id"]
+    events.append(ev(seq + 1, "undo", {"undoes_event_id": pass_id}, "2026-10-15T12:02:02Z"))
+    state = apply_events(events)
+    assert state["live"][1]["battle_shocked"] is True
 
 
 def test_lane_survives_new_turn():

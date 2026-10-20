@@ -31,6 +31,30 @@ it("projeta avanço, CP e undo", () => {
   expect(blocked.warnings).toContain("cp_blocked");
 });
 
+it("mantém battle-shock até passar no teste", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "Daemonettes" }] }, "2026-10-15T12:00:00Z"),
+    ev(2, "phase_advanced", {}, "2026-10-15T12:00:01Z"),
+    ev(3, "battleshock_result", { list_unit_id: 1, passed: false }, "2026-10-15T12:00:02Z"),
+  ];
+  for (let index = 4; index < 28; index += 1) {
+    events.push(ev(index, "phase_advanced", {}, `2026-10-15T12:01:${String(index).padStart(2, "0")}Z`));
+  }
+  const state = applyEvents(events);
+  expect(state.round).toBe(2);
+  expect(state.player).toBe("me");
+  expect(state.live[1].battle_shocked).toBe(true);
+  const pass = ev(28, "battleshock_result", { list_unit_id: 1, passed: true }, "2026-10-15T12:02:00Z");
+  const cleared = applyEvents([...events, pass]);
+  expect(cleared.live[1].battle_shocked).toBe(false);
+  const undone = applyEvents([
+    ...events,
+    pass,
+    { ...ev(29, "undo", { undoes_event_id: pass.id }, "2026-10-15T12:02:01Z"), undoes_event_id: pass.id },
+  ]);
+  expect(undone.live[1].battle_shocked).toBe(true);
+});
+
 it("guarda a faixa entre turnos e troca a escolha do efeito no mesmo turno", () => {
   const events = [
     ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "Lion" }] }, "2026-10-15T12:00:00Z"),

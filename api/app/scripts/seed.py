@@ -11,7 +11,10 @@ from app.services.views import upsert_effect
 
 CORE = [
     ("command", "No começo do turno, confira CP e os lembretes da facção. HIPÓTESE até você revisar."),
-    ("battle_shock", "Teste quem está abaixo da metade. Falhou: marque battle-shock até a sua próxima Command."),
+    (
+        "battle_shock",
+        "Teste quem está em battle-shock ou na metade da força ou abaixo. Só sai do battle-shock quem já estava nele e passou. Falhou: fica em battle-shock.",
+    ),
     ("movement", "Quem já moveu ou está destruído não entra de novo no movimento."),
     ("shooting", "Quem avançou só atira com armas ASSAULT, salvo uma permissão que você cadastrou."),
     ("charge", "Quem avançou ou recuou não carrega, salvo permissão cadastrada."),
@@ -29,6 +32,8 @@ def main() -> None:
                 ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=True)
                 db.add(ability)
                 db.flush()
+            elif phase == "battle_shock":
+                ability.summary_user = text
             exists = db.scalar(
                 select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
             )
@@ -45,6 +50,9 @@ def main() -> None:
                         "is_hypothesis": True,
                     },
                 )
+            elif phase == "battle_shock":
+                exists.effect_text = text
+                exists.is_hypothesis = True
         faction = db.scalar(select(Faction).where(Faction.name == "Chaos - Chaos Daemons"))
         if faction is None:
             faction = Faction(name="Chaos - Chaos Daemons", source="user", accent_color="#6E2430")

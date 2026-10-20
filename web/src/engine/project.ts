@@ -160,7 +160,7 @@ function blank(id: number, name: string, round: number, previous?: LiveUnit): Li
     engaged: previous?.engaged ?? false,
     on_action: false,
     action_name: null,
-    battle_shocked: false,
+    battle_shocked: previous?.battle_shocked ?? false,
     below_half: previous?.below_half ?? false,
     destroyed: previous?.destroyed ?? false,
     in_reserves: previous?.in_reserves ?? false,

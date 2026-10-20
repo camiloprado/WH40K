@@ -103,7 +103,7 @@ def _blank(unit_id: int, name: str, round_no: int, previous: dict | None) -> dic
         "engaged": bool(previous and previous["engaged"]),
         "on_action": False,
         "action_name": None,
-        "battle_shocked": False,
+        "battle_shocked": bool(previous and previous["battle_shocked"]),
         "below_half": bool(previous and previous["below_half"]),
         "destroyed": bool(previous and previous["destroyed"]),
         "in_reserves": bool(previous and previous["in_reserves"]),
