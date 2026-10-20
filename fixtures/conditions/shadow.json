@@ -1,0 +1,9 @@
+﻿[
+  {"name": "own_dz_only_true_is_false", "node": {"game.shadow_of_chaos": true}, "facts": {"shadow_areas": ["own_dz"]}, "expected": false},
+  {"name": "own_dz_only_false_is_true", "node": {"game.shadow_of_chaos": false}, "facts": {"shadow_areas": ["own_dz"]}, "expected": true},
+  {"name": "own_dz_area", "node": {"game.shadow_of_chaos": "own_dz"}, "facts": {"shadow_areas": ["own_dz"]}, "expected": true},
+  {"name": "nml_makes_true", "node": {"game.shadow_of_chaos": true}, "facts": {"shadow_areas": ["own_dz", "nml"]}, "expected": true},
+  {"name": "unknown_fact", "node": {"xyz": 1}, "facts": {}, "expected": false},
+  {"name": "turn_owner_own", "node": {"turn_owner": "own"}, "facts": {"turn_owner": "own"}, "expected": true},
+  {"name": "turn_owner_mismatch", "node": {"turn_owner": "opponent"}, "facts": {"turn_owner": "own"}, "expected": false}
+]

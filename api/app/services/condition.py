@@ -107,10 +107,11 @@ def matches(node: object, facts: dict) -> bool:
             if var_objExpected is False:
                 return not bool(facts.get("shadow"))
             return False
+        var_lstContested = [item for item in var_lstAreas if item in ("nml", "opp_dz")]
         if var_objExpected is True:
-            return bool(var_lstAreas)
+            return bool(var_lstContested)
         if var_objExpected is False:
-            return not var_lstAreas
+            return not var_lstContested
         return str(var_objExpected) in var_lstAreas
     if var_strKey == "game.round":
         return facts.get("round") == var_objExpected

@@ -323,6 +323,32 @@ function keywordFilter(node: Record<string, unknown> | undefined): string | null
   return null;
 }
 
+/** Avalia condition_json contra fatos de jogo (paridade com condition.matches). */
+export function matchCondition(
+  node: Record<string, unknown>,
+  facts: { shadow_areas?: string[]; turn_owner?: string; is_leading?: boolean; round?: number; [key: string]: unknown },
+): boolean {
+  return matches(node, {
+    phase: String(facts.phase || "command"),
+    unit: {
+      moved: "none",
+      shot: false,
+      charged: false,
+      fought: false,
+      engaged: false,
+      on_action: false,
+      battle_shocked: false,
+      destroyed: false,
+    },
+    game: {
+      round: facts.round as number | undefined,
+      turnOwner: facts.turn_owner as "own" | "opponent" | undefined,
+      isLeading: Boolean(facts.is_leading),
+      shadow: facts.shadow_areas as string[] | undefined,
+    },
+  });
+}
+
 function matches(
   node: Record<string, unknown>,
   input: {
@@ -349,8 +375,9 @@ function matches(
   if (var_strKey === "game.round") return input.game?.round === var_objExpected;
   if (var_strKey === "game.shadow_of_chaos") {
     const var_lstAreas = input.game?.shadow ?? [];
-    if (var_objExpected === true) return var_lstAreas.length > 0;
-    if (var_objExpected === false) return var_lstAreas.length === 0;
+    const var_lstContested = var_lstAreas.filter((item) => item === "nml" || item === "opp_dz");
+    if (var_objExpected === true) return var_lstContested.length > 0;
+    if (var_objExpected === false) return var_lstContested.length === 0;
     return var_lstAreas.includes(String(var_objExpected));
   }
   return false;
