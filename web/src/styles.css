@@ -11,13 +11,14 @@
   --warn: #e6c15a;
   --bad: #e07a7a;
   --command: #d4a017;
-  --battle_shock: #d6457a;
+  --battle_shock: #c23a6c;
   --movement: #3fa7d6;
   --shooting: #e08e2e;
   --charge: #b85cd6;
   --fight: #c0392b;
   --end_of_turn: #a3acb0;
   --end_of_round: #7f8c8d;
+  --round_start: #5d6d7e;
   --on-round_start: #fff;
   --on-command: #111;
   --on-battle_shock: #fff;
@@ -26,7 +27,7 @@
   --on-charge: #111;
   --on-fight: #fff;
   --on-end_of_turn: #111;
-  --on-end_of_round: #fff;
+  --on-end_of_round: #111;
   --phase: var(--accent);
   --nav-h: 48px;
   color-scheme: dark;
@@ -227,8 +228,25 @@ table.units td.num { text-align: right; }
 .unit-card.inactive { background: #12141a; border-style: dashed; filter: grayscale(0.35); }
 .unit-card.inactive .card-reason { color: #ffc9c9; font-size: 12px; }
 .unit-card.tapped { transform: rotate(90deg) scale(0.74); }
+.unit-card.tapped .done-seal { display: none; }
 .unit-card.selected { outline: 2px solid #fff; outline-offset: 2px; }
 .unit-card.destroyed { filter: grayscale(1); opacity: 0.55; }
+.done-seal {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--good);
+  color: #111;
+  font-size: 14px;
+  font-weight: 700;
+  display: none;
+  place-items: center;
+  z-index: 1;
+}
+.unit-card.tapped .done-seal { display: grid; }
 .card-cell.compact .unit-card { width: 150px; height: auto; min-height: 44px; transform: none; }
 .card-top { display: flex; justify-content: space-between; gap: 4px; padding-top: 2px; }
 .card-effects { font-size: 10px; line-height: 1.25; padding: 2px 4px; border-radius: 4px; background: #1c2230; color: #b8c4d6; }
@@ -243,7 +261,7 @@ table.units td.num { text-align: right; }
 .card-weapons { font-size: 10px; color: var(--shooting); }
 .pips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: auto; }
 .unit-card .card-reason + .pips { margin-top: 0; }
-.pip { font-size: 10px; min-width: 20px; height: 18px; padding: 0 4px; border-radius: 4px; display: inline-grid; place-items: center; border: 1px solid #353b48; color: #5d6472; font-family: "JetBrains Mono", monospace; }
+.pip { font-size: 10px; min-width: 20px; height: 18px; padding: 0 4px; border-radius: 4px; display: inline-grid; place-items: center; border: 1px solid #353b48; color: #8a919c; font-family: "JetBrains Mono", monospace; }
 .pip.on { background: color-mix(in srgb, var(--c) 30%, transparent); border-color: var(--c); color: #fff; }
 
 .side { display: flex; flex-direction: column; gap: 10px; padding: 10px; overflow: auto; background: #0d1015; border-left: 1px solid var(--line); }
@@ -356,6 +374,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .topnav .brand { white-space: nowrap; font-size: 14px; }
   .player-bar { padding: 6px 8px; }
   .unit-card.tapped { transform: none; }
+  .unit-card.tapped .done-seal { display: grid; }
   .counter .step, .zone-head button, .chip, .ghost, .player-extra button { min-height: 48px; min-width: 48px; }
   .counter { gap: 8px; }
   .counter-value { font-size: 18px; min-width: 52px; }

@@ -149,6 +149,7 @@ const BLANK: LiveUnit = {
   below_half: false,
   destroyed: false,
   in_reserves: false,
+  must_ingress: false,
   lane: "center",
   overrides: [],
 };
@@ -249,8 +250,11 @@ export function GameScreen() {
         activePlayer: projection.player === "opponent" ? "opponent" : "me",
         game: {
           round: projection.round,
+          firstPlayer: projection.firstPlayer === "opponent" ? "opponent" : "me",
           turnOwner: projection.player === "me" ? "own" : "opponent",
           isLeading: var_boolLeading,
+          hasDeepStrike: (unit.keywords || []).some((item: string) => item.toUpperCase() === "DEEP STRIKE"),
+          hasWarpRifts: (unit.keywords || []).some((item: string) => item.toUpperCase() === "WARP RIFTS"),
           shadow: [
             "own_dz",
             ...(var_objShadow.nml ? ["nml"] : []),
@@ -624,7 +628,17 @@ export function GameScreen() {
                         ? `Sync ${pending}`
                         : "Sincronizado"}
               </span>
-              {!wake && <span className="chip chip-warn" title="Seu navegador não mantém a tela acesa. Ajuste o bloqueio automático.">Tela pode apagar</span>}
+              {!wake && (
+                <button
+                  type="button"
+                  className="chip chip-warn"
+                  onClick={() =>
+                    flash("Seu navegador não mantém a tela acesa. Ajuste o bloqueio automático do celular.")
+                  }
+                >
+                  Tela pode apagar
+                </button>
+              )}
               <button className="ghost" onClick={undo} disabled={!lastAction} title="Ctrl+Z">
                 Desfazer
               </button>
@@ -864,7 +878,7 @@ function ZoneArea({
           {PLACE_NAMES[zone]} <span className="muted mono">{count}</span>
         </span>
       </div>
-      <div className="zone-body">{count ? children : <p className="muted empty">Arraste unidades para cá</p>}</div>
+      <div className="zone-body">{count ? children : <p className="muted empty">Nenhuma unidade aqui.</p>}</div>
     </section>
   );
 }
@@ -926,6 +940,9 @@ function UnitCard({
           onMenu(event.clientX, event.clientY);
         }}
       >
+        <span className="done-seal" aria-hidden>
+          ✓
+        </span>
         <span className="card-top">
           <span className="card-name">{unit.datasheet_name}</span>
           {unit.is_warlord && <span className="crown" title="Warlord">★</span>}

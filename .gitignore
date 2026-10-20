@@ -18,6 +18,7 @@ web/dist/
 web/dev-dist/
 web/test-results/
 web/playwright-report/
+web/.e2e-token
 # Playtest/QA local (não entra no repo)
 docs/qa/
 *.tsbuildinfo

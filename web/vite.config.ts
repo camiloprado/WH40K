@@ -28,5 +28,10 @@ export default defineConfig({
     port: 5173,
     proxy: { "/api": process.env.API_TARGET || "http://127.0.0.1:18001" },
   },
+  preview: {
+    host: "127.0.0.1",
+    port: 5173,
+    proxy: { "/api": process.env.API_TARGET || "http://127.0.0.1:18001" },
+  },
   test: { environment: "node", include: ["src/**/*.test.ts"] },
 });
