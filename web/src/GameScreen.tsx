@@ -132,6 +132,7 @@ export function GameScreen() {
   const [selected, setSelected] = useState<number | null>(null);
   const [menu, setMenu] = useState<Menu>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [advanceConfirm, setAdvanceConfirm] = useState<string[] | null>(null);
   const [wake, setWake] = useState(typeof navigator.wakeLock?.request === "function");
   const toastTimer = useRef<number>();
 
@@ -246,7 +247,26 @@ export function GameScreen() {
     if (lastAction) push("undo", { undoes_event_id: lastAction.id }, "Desfeito");
   }, [lastAction, push]);
 
-  const advance = useCallback(() => push("phase_advanced", {}), [push]);
+  const doAdvance = useCallback(() => {
+    setAdvanceConfirm(null);
+    return push("phase_advanced", {});
+  }, [push]);
+
+  const pendingUnits = useMemo(() => {
+    const actionPhases = new Set(["movement", "shooting", "charge", "fight"]);
+    if (!actionPhases.has(phase) || projection.player !== "me") return [];
+    return cards.filter(
+      (item) => item.zone === "table" && (item.result.status === "active" || item.result.status === "warn"),
+    );
+  }, [cards, phase, projection.player]);
+
+  const advance = useCallback(() => {
+    if (pendingUnits.length) {
+      setAdvanceConfirm(pendingUnits.map((item) => item.unit.datasheet_name));
+      return;
+    }
+    void doAdvance();
+  }, [pendingUnits, doAdvance]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -255,6 +275,7 @@ export function GameScreen() {
       if (event.key === "Escape") {
         setMenu(null);
         setSelected(null);
+        setAdvanceConfirm(null);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
         undo();
@@ -389,7 +410,30 @@ export function GameScreen() {
 
   return (
     <div className="table-app" style={{ ["--phase" as string]: `var(--${phase})`, ["--accent" as string]: bundle.list?.accent_color }} onClick={() => setMenu(null)}>
-      <PhaseRail phase={phase} mine={mine} onPick={jumpTo} onNext={advance} />
+      <PhaseRail
+        phase={phase}
+        mine={mine}
+        pendingCount={pendingUnits.length}
+        onPick={jumpTo}
+        onNext={advance}
+      />
+      {advanceConfirm && (
+        <div className="sheet-confirm" role="dialog" aria-modal>
+          <p>
+            {advanceConfirm.length} unidade{advanceConfirm.length > 1 ? "s" : ""} ainda pode
+            {advanceConfirm.length > 1 ? "m" : ""} agir: {advanceConfirm.slice(0, 5).join(", ")}
+            {advanceConfirm.length > 5 ? "…" : ""}
+          </p>
+          <div className="row">
+            <button className="ghost" onClick={() => setAdvanceConfirm(null)}>
+              Voltar
+            </button>
+            <button className="primary" onClick={() => void doAdvance()}>
+              Avançar mesmo assim
+            </button>
+          </div>
+        </div>
+      )}
 
       <section className="board">
         <PlayerBar
@@ -544,24 +588,51 @@ export function GameScreen() {
   );
 }
 
-function PhaseRail({ phase, mine, onPick, onNext }: { phase: string; mine: boolean; onPick: (phase: string) => void; onNext: () => void }) {
+function PhaseRail({
+  phase,
+  mine,
+  pendingCount,
+  onPick,
+  onNext,
+}: {
+  phase: string;
+  mine: boolean;
+  pendingCount: number;
+  onPick: (phase: string) => void;
+  onNext: () => void;
+}) {
   const current = PHASES.indexOf(phase as (typeof PHASES)[number]);
+  const short = { round_start: "INI", command: "CMD", battle_shock: "BS", movement: "MOV", shooting: "SHT", charge: "CHG", fight: "FGT", end_of_turn: "FIM" } as Record<string, string>;
   return (
     <nav className="phase-rail" aria-label="Fases">
       <div className="turn-tag">{mine ? "Seu turno" : "Turno do oponente"}</div>
-      {PHASES.map((id, index) => (
+      <div className="phase-current mono">{short[phase] || phase}</div>
+      {pendingCount > 0 && mine && (
         <button
-          key={id}
-          className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
-          style={{ ["--c" as string]: `var(--${id})` }}
-          disabled={index < current}
-          onClick={() => onPick(id)}
-          title={index > current ? `Avançar até ${PHASE_NAMES[id]}` : PHASE_NAMES[id]}
+          className="ghost pending-chip"
+          type="button"
+          onClick={() => {
+            const el = document.querySelector(".unit-card.pending");
+            el?.scrollIntoView({ behavior: "smooth", block: "center" });
+          }}
         >
-          <span className="dot" />
-          {PHASE_NAMES[id]}
+          Faltam {pendingCount} · {short[phase] || phase}
         </button>
-      ))}
+      )}
+      <details className="phase-menu">
+        <summary>Fases</summary>
+        {PHASES.map((id, index) => (
+          <button
+            key={id}
+            className={`phase-step ${id === phase ? "on" : ""} ${index < current ? "past" : ""}`}
+            style={{ ["--c" as string]: `var(--${id})` }}
+            disabled={index < current}
+            onClick={() => onPick(id)}
+          >
+            {PHASE_NAMES[id]}
+          </button>
+        ))}
+      </details>
       <button className="primary next" onClick={onNext} title="Atalho: N">
         Próxima fase
       </button>
@@ -685,11 +756,13 @@ function UnitCard({
   const tapped = result.status === "done";
   const state = card.zone === "destroyed" ? "destroyed" : result.status;
   const onTable = card.zone === "table";
+  const actionPhase = ["movement", "shooting", "charge", "fight"].includes(phase);
+  const pending = onTable && actionPhase && (result.status === "active" || result.status === "warn");
   const pendingChoices = onTable ? card.effects.filter((effect) => effect.choice_options.length && !choiceFor(effect, unit.id)) : [];
   return (
     <div className={`card-cell ${compact ? "compact" : ""}`}>
       <button
-        className={`unit-card ${state} ${tapped ? "tapped" : ""} ${selected ? "selected" : ""}`}
+        className={`unit-card ${state} ${pending ? "pending" : ""} ${tapped ? "tapped" : ""} ${selected ? "selected" : ""}`}
         data-unit={unit.id}
         draggable
         onDragStart={(event) => {

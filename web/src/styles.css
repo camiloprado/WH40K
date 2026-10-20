@@ -147,6 +147,7 @@ table.units td.num { text-align: right; }
 .table-app {
   display: grid;
   grid-template-columns: 168px minmax(0, 1fr) 340px;
+  height: calc(100dvh - var(--nav-h));
   height: calc(100vh - var(--nav-h));
   background: radial-gradient(ellipse at center, #161b23 0%, var(--bg) 75%);
 }
@@ -211,9 +212,10 @@ table.units td.num { text-align: right; }
   overflow: hidden;
 }
 .unit-card::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4px; background: var(--accent); }
-.unit-card.active { border-color: var(--phase); box-shadow: 0 0 0 1px var(--phase), 0 0 14px color-mix(in srgb, var(--phase) 35%, transparent); }
+.unit-card.pending { border-color: var(--phase); box-shadow: 0 0 0 1px var(--phase), 0 0 14px color-mix(in srgb, var(--phase) 35%, transparent); }
 .unit-card.warn { border-color: var(--warn); }
-.unit-card.inactive { opacity: 0.42; filter: grayscale(0.85); }
+.unit-card.inactive { background: #12141a; border-style: dashed; filter: grayscale(0.4); }
+.unit-card.inactive .card-reason { color: #ffb3b3; }
 .unit-card.tapped { transform: rotate(90deg) scale(0.74); opacity: 0.75; }
 .unit-card.selected { outline: 2px solid #fff; outline-offset: 2px; }
 .unit-card.destroyed { filter: grayscale(1); opacity: 0.55; }
@@ -302,8 +304,15 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
   .topnav { overflow-x: auto; }
   .split, .split-even { grid-template-columns: 1fr; }
   .page { padding: 14px; }
-  .table-app { display: flex; flex-direction: column; height: auto; min-height: calc(100vh - var(--nav-h)); padding-bottom: 76px; }
-  .phase-rail { position: fixed; left: 0; right: 0; bottom: 0; flex-direction: row; z-index: 30; padding: 6px; overflow-x: auto; border-right: 0; border-top: 1px solid var(--line); }
+  .table-app { display: flex; flex-direction: column; height: auto; min-height: calc(100dvh - var(--nav-h)); min-height: calc(100vh - var(--nav-h)); padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  .phase-rail { position: fixed; left: 0; right: 0; bottom: 0; flex-direction: row; z-index: 30; padding: 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); overflow-x: hidden; border-right: 0; border-top: 1px solid var(--line); align-items: center; gap: 6px; }
+  .phase-rail .phase-step { display: none; }
+  .phase-rail .phase-current { font-weight: 700; padding: 0 8px; }
+  .phase-rail .phase-menu { position: relative; }
+  .phase-rail .phase-menu summary { list-style: none; min-height: 48px; padding: 8px 12px; cursor: pointer; }
+  .phase-rail .phase-menu[open] .phase-step { display: block; width: 100%; text-align: left; }
+  .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; }
+  .sheet-confirm { position: fixed; left: 12px; right: 12px; bottom: calc(80px + env(safe-area-inset-bottom, 0px)); z-index: 40; background: #1a1e28; border: 1px solid var(--line); padding: 16px; border-radius: 8px; }
   .turn-tag { display: none; }
   .phase-step { flex: none; font-size: 12px; padding: 0 8px; }
   .phase-step .dot { display: none; }
