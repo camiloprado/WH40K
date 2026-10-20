@@ -5,7 +5,8 @@ test("daemonettes que avançou fica cinza no tiro", async ({ page }) => {
     Object.defineProperty(navigator, "wakeLock", { configurable: true, value: undefined });
   });
   await page.goto("/");
-  await expect(page.getByRole("heading", { name: "List Companion" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "List Companion" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Listas" })).toBeVisible();
   await page.evaluate(async () => {
     const open = indexedDB.open("list-companion");
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -151,7 +152,7 @@ test("daemonettes que avançou fica cinza no tiro", async ({ page }) => {
   await expect(currentPhase).toHaveText("Shooting");
   await expect(daemonettes).toContainText("Avançou — sem ASSAULT");
   await expect(assault).toContainText("Só armas ASSAULT");
-  await expect.poll(() => daemonettes.evaluate((node) => Number(getComputedStyle(node).opacity))).toBeLessThan(0.6);
+  await expect(daemonettes).toHaveClass(/inactive/);
 
   await assault.dblclick();
   await expect(assault).toHaveClass(/tapped/);

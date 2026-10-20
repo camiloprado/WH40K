@@ -5,6 +5,8 @@ test("battle-shock persiste até o próximo passo próprio e some ao passar", as
     Object.defineProperty(navigator, "wakeLock", { configurable: true, value: undefined });
   });
   await page.goto("/");
+  await expect(page.getByRole("link", { name: "List Companion" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Listas" })).toBeVisible();
   await page.evaluate(async () => {
     const open = indexedDB.open("list-companion");
     const database = await new Promise<IDBDatabase>((resolve, reject) => {
@@ -60,7 +62,7 @@ test("battle-shock persiste até o próximo passo próprio e some ao passar", as
     });
   });
   await page.goto("/games/bs-demo");
-  await expect(page.getByText("Daemonettes")).toBeVisible();
+  await expect(page.locator('[data-unit="1"]')).toContainText("Daemonettes");
   for (let step = 0; step < 20; step += 1) {
     const next = page.getByRole("button", { name: /Próxima fase/i });
     if (await page.getByRole("heading", { name: /Battle-shock/i }).isVisible().catch(() => false)) {
