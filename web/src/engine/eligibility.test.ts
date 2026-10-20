@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateMany, evaluateUnit, type UnitSnapshot } from "./eligibility";
+import { canStartAction, evaluateMany, evaluateUnit, type UnitSnapshot } from "./eligibility";
 
 const base = (patch: Partial<UnitSnapshot> = {}): UnitSnapshot => ({
   moved: "none",
@@ -146,6 +146,36 @@ describe("elegibilidade", () => {
     expect(onlyMelee.reasons).toContain("Sem arma de tiro");
     const empty = evaluateUnit({ phase: "shooting", unit: base(), weapons: [] });
     expect(empty.status).toBe("done");
+  });
+
+  it("canStartAction bloqueia engajada e libera TITANIC", () => {
+    expect(canStartAction(base({ engaged: true }))).toContain("Engajada: não começa ação");
+    expect(canStartAction(base({ engaged: true }), ["TITANIC"]).some((item) => item.includes("Engajada"))).toBe(false);
+    expect(canStartAction(base({ battle_shocked: true }))).toContain("Em battle-shock: não começa ação");
+  });
+
+  it("fato desconhecido falha fechado e turn_owner discrimina", () => {
+    const allowOpp = {
+      effect_kind: "allow",
+      restriction_key: "shoot_after_advance",
+      condition_json: { turn_owner: "opponent" },
+    };
+    const mine = evaluateUnit({
+      phase: "shooting",
+      unit: base({ moved: "advanced" }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      effects: [allowOpp],
+      game: { turnOwner: "own" },
+    });
+    expect(mine.status).toBe("inactive");
+    const opp = evaluateUnit({
+      phase: "shooting",
+      unit: base({ moved: "advanced" }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      effects: [allowOpp],
+      game: { turnOwner: "opponent" },
+    });
+    expect(opp.status).toBe("active");
   });
 
   it("Desperate Escape quando engajada e em battle-shock na Movement", () => {

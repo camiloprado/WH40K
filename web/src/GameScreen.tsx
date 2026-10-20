@@ -178,6 +178,7 @@ export function GameScreen() {
     return (bundle.units as any[]).map((unit, order) => {
       const live = projection.live[unit.id] || { ...BLANK, list_unit_id: unit.id, name: unit.datasheet_name };
       const var_objShadow = shadowNow(projection);
+      const var_boolLeading = (bundle.attachments || []).some((item: any) => item.leader_list_unit_id === unit.id);
       const result = evaluateUnit({
         phase,
         unit: live,
@@ -186,6 +187,8 @@ export function GameScreen() {
         effects: bundle.rule_effects || [],
         game: {
           round: projection.round,
+          turnOwner: projection.player === "me" ? "own" : "opponent",
+          isLeading: var_boolLeading,
           shadow: [
             "own_dz",
             ...(var_objShadow.nml ? ["nml"] : []),

@@ -114,4 +114,10 @@ def matches(node: object, facts: dict) -> bool:
         return str(var_objExpected) in var_lstAreas
     if var_strKey == "game.round":
         return facts.get("round") == var_objExpected
-    return facts.get(var_strKey) == var_objExpected
+    if var_strKey == "turn_owner":
+        return facts.get("turn_owner") == var_objExpected
+    if var_strKey == "is_leading":
+        return bool(facts.get("is_leading")) == bool(var_objExpected)
+    if var_strKey in con_setFactKeys or var_strKey.startswith("state."):
+        return facts.get(var_strKey) == var_objExpected
+    return False

@@ -16,7 +16,10 @@ CORE = [
         "Teste quem está em battle-shock ou na metade da força ou abaixo. Só sai do battle-shock quem já estava nele e passou. Falhou: fica em battle-shock.",
     ),
     ("movement", "Quem já moveu ou está destruído não entra de novo no movimento."),
-    ("shooting", "Quem avançou só atira com armas ASSAULT, salvo uma permissão que você cadastrou."),
+    (
+        "shooting",
+        "Quem avançou só atira com ASSAULT. Atirar num MONSTER/VEHICLE inimigo engajado: −1 para acertar, exceto CLOSE-QUARTERS de quem está engajado com ele (Core 17.03).",
+    ),
     (
         "charge",
         "Quem avançou, recuou ou está engajado não carrega, salvo permissão. Lembrete: precisa de inimigo a 12\".",
@@ -38,7 +41,7 @@ def main() -> None:
                 ability = Ability(kind="core", name=phase, summary_user=text, is_hypothesis=True)
                 db.add(ability)
                 db.flush()
-            elif phase in ("battle_shock", "charge", "fight"):
+            elif phase in ("battle_shock", "charge", "fight", "shooting"):
                 ability.summary_user = text
             exists = db.scalar(
                 select(RuleEffect).where(RuleEffect.ability_id == ability.id, RuleEffect.phase == phase)
@@ -56,7 +59,7 @@ def main() -> None:
                         "is_hypothesis": True,
                     },
                 )
-            elif phase in ("battle_shock", "charge", "fight"):
+            elif phase in ("battle_shock", "charge", "fight", "shooting"):
                 exists.effect_text = text
                 exists.is_hypothesis = True
         faction = db.scalar(select(Faction).where(Faction.name == "Chaos - Chaos Daemons"))

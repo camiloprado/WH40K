@@ -10,6 +10,7 @@ export type UnitSnapshot = {
   on_action: boolean;
   battle_shocked: boolean;
   destroyed: boolean;
+  in_reserves?: boolean;
   overrides?: { key: string }[];
 };
 
@@ -45,7 +46,30 @@ const con_strPistol = "PISTOL";
 const con_strAssault = "ASSAULT";
 const con_strBlast = "BLAST";
 
-export type GameFacts = { round?: number; shadow?: string[] };
+export type GameFacts = {
+  round?: number;
+  shadow?: string[];
+  turnOwner?: "own" | "opponent";
+  isLeading?: boolean;
+};
+
+export function canStartAction(
+  unit: UnitSnapshot,
+  unitKeywords?: string[],
+): string[] {
+  const var_lstReasons: string[] = [];
+  const var_boolTitanic = (unitKeywords ?? []).some((item) => item.toUpperCase() === "TITANIC");
+  if (unit.destroyed || unit.in_reserves) var_lstReasons.push("Fora do tabuleiro: não começa ação");
+  if ((unitKeywords ?? []).some((item) => ["AIRCRAFT", "FORTIFICATION"].includes(item.toUpperCase()))) {
+    var_lstReasons.push("AIRCRAFT/FORTIFICATION: não começa ação");
+  }
+  if (unit.battle_shocked) var_lstReasons.push("Em battle-shock: não começa ação");
+  if (unit.engaged && !var_boolTitanic) var_lstReasons.push("Engajada: não começa ação");
+  if (unit.moved === "advanced") var_lstReasons.push("Avançou: não começa ação neste turno");
+  if (unit.moved === "fell_back") var_lstReasons.push("Recuou: não começa ação neste turno");
+  if (unit.on_action) var_lstReasons.push("Já começou outra ação neste turno");
+  return var_lstReasons;
+}
 
 export function evaluateUnit(input: {
   phase: string;
@@ -168,6 +192,11 @@ export function evaluateUnit(input: {
         "Em battle-shock: se recuar, só Desperate Escape — hazard roll por modelo (1–2 = mortal wound)",
       );
     }
+    if (input.unit.engaged && !input.unit.battle_shocked && input.unit.moved === "fell_back") {
+      var_lstReasons.push(
+        "Desperate Escape: hazard roll por modelo e teste de battle-shock depois de mover",
+      );
+    }
   }
   if (input.phase === "charge") {
     if (input.unit.engaged) {
@@ -206,6 +235,14 @@ export function evaluateUnit(input: {
         : "Recuou: não começa ação neste turno",
     );
   }
+  if (input.unit.on_action) {
+    for (const var_strReason of canStartAction({ ...input.unit, on_action: false }, input.unitKeywords)) {
+      if (!var_lstReasons.includes(var_strReason)) var_lstReasons.push(var_strReason);
+    }
+    if (input.unit.moved !== "none" && input.unit.moved !== "remained") {
+      var_lstReasons.push("Ação não conclui: moveu depois de começar");
+    }
+  }
   if (
     input.phase === "shooting" &&
     !input.unit.engaged &&
@@ -218,6 +255,13 @@ export function evaluateUnit(input: {
     if (var_boolHasCq && var_boolHasOther) {
       var_lstReasons.push("Escolha: CLOSE-QUARTERS ou as outras armas");
     }
+  }
+  if (
+    input.unit.shot &&
+    (input.unit.moved === "advanced" || input.unit.engaged) &&
+    (input.phase === "shooting" || input.phase === "charge" || input.phase === "fight")
+  ) {
+    var_lstReasons.push("Atirou: não começa ação nesta fase");
   }
   if (input.unit.battle_shocked) {
     var_lstReasons.push(
@@ -300,6 +344,8 @@ function matches(
   if (var_strKey === "weapon_keyword") {
     return (input.weapons ?? []).some((item) => (item.keywords ?? []).includes(String(var_objExpected)));
   }
+  if (var_strKey === "turn_owner") return input.game?.turnOwner === var_objExpected;
+  if (var_strKey === "is_leading") return Boolean(input.game?.isLeading) === Boolean(var_objExpected);
   if (var_strKey === "game.round") return input.game?.round === var_objExpected;
   if (var_strKey === "game.shadow_of_chaos") {
     const var_lstAreas = input.game?.shadow ?? [];
@@ -307,8 +353,7 @@ function matches(
     if (var_objExpected === false) return var_lstAreas.length === 0;
     return var_lstAreas.includes(String(var_objExpected));
   }
-  if (var_strKey.startsWith("game.")) return false;
-  return true;
+  return false;
 }
 
 export function evaluateMany(count: number): number {
