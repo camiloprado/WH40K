@@ -79,7 +79,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF13 | **Gain Core CP:** em toda Command, dos dois jogadores, cada um ganha +1 (Core 08.02). Editável; aviso se repetir. Opcional: teto de 1 CP extra por rodada (Event Companion 1.3). | 3 |
 | RF14 | **Stratagems:** os usáveis na fase atual; registrar o uso com CP; limites (1× por fase/turno/batalha) com aviso e override. | 3 |
 | RF15 | **Objetivos:** controle por rodada (meu/oponente/contestado/ninguém); VP primária e secundárias. | 3 |
-| RF16 | **Shadow of Chaos:** na Command, pergunta quantos objetivos controla e se o tabuleiro inteiro está em Shadow; registra e lista os efeitos dependentes (regra como dado; HIPÓTESE quanto ao texto da 11ª). | 3 |
+| RF16 | **Shadow of Chaos** (só exército Legiones Daemonica; não vale com Daemonic Pact): a zona de deploy do usuário está sempre no Shadow. **No começo de cada fase, nos dois turnos**, o app pergunta, ou calcula pelos objetivos, se a Terra de Ninguém e a zona do oponente estão no Shadow: controle ≥ metade dos objetivos da área; área sem objetivo nunca entra. Grava por (rodada, turno, fase) e lista os efeitos dependentes (Manifestation, Terror, Warp Rifts, Plague Legion, stratagems de Scintillating Legion e Legion of Excess). Fonte: Faction Pack Daemons v1.2, p. 2 e 131. | 3 |
 | RF17 | **Battle-shock:** na Command, testa quem está em battle-shock **ou** na metade da força ou abaixo; passou → sai do battle-shock; falhou → continua ou entra. O estado **não** é limpo ao trocar de turno (Core 08.03). | 3 |
 | RF18 | **Motor de elegibilidade** (cliente, offline): ativo/inativo/alerta por unidade e fase, com o motivo. Regras base + exceções de `rule_effects`. | 3 |
 | RF19 | **Lembretes:** Movement destaca quem não moveu; Shooting/Charge acinzentam inelegíveis; Fight lista engajadas/carregaram; End lembra de missões, secundárias e ações. | 3 |
@@ -255,13 +255,14 @@ Cada ability é ligada aos seus `rule_effects`. Isso alimenta o `/turn-guide`, o
 | Fase | Inativa se | Exceção (`allow`) |
 |---|---|---|
 | Movement | já moveu; destruída | — |
+| Movement | engajada e em battle-shock → aviso: recuo só como Desperate Escape, hazard roll por modelo (Core 09.07) | — |
 | Shooting | `advanced` | `ASSAULT` (só armas ASSAULT ativas) |
 | Shooting | `fell_back` | regra que permite atirar após recuar |
 | Shooting | `on_action` | regra da ação |
-| Shooting | já atirou; engajada e avançou → sem tiro; engajada e não é MONSTER/VEHICLE → só CLOSE-QUARTERS/PISTOL contra quem está engajado com ela, sem −1; MONSTER/VEHICLE engajado → todas as armas, −1 exceto CQ no engajado, BLAST não mira a unidade engajada (Core 10.06) | — |
+| Shooting | já atirou; engajada e avançou → sem tiro; engajada e não é MONSTER/VEHICLE → só CLOSE-QUARTERS/PISTOL contra quem está engajado com ela, sem −1; MONSTER/VEHICLE engajado → todas as armas, −1 exceto CQ no engajado, BLAST não mira a unidade engajada (Core 10.06, 17.03, 24.27) | — |
 | Charge | `advanced` ou `fell_back` | regra que permite carregar |
 | Charge | `on_action`; já carregou | — |
-| Fight | não engajada e não carregou; já lutou | lutar de novo |
+| Fight | não engajada, não carregou e não estava engajada no começo do Fight step; já lutou; desengajada elegível → Overrun fight (Core 12.04, 12.06) | lutar de novo |
 | Qualquer | `destroyed` | — |
 | Battle-shock | `battle_shocked` → avisa que o OC vira traço, a unidade não pode ser alvo de stratagem e não começa nem conclui ação | — |
 
@@ -272,7 +273,7 @@ Cada ability é ligada aos seus `rule_effects`. Isso alimenta o `/turn-guide`, o
 ```
 
 - Operadores `all`/`any`/`not`.
-- Fatos: `phase`, `turn_owner`, `state.<campo>`, `unit_keyword`, `weapon_keyword`, `is_leading`, `game.shadow_of_chaos`, `game.round`.
+- Fatos: `phase`, `turn_owner`, `state.<campo>`, `unit_keyword`, `weapon_keyword`, `is_leading`, `game.shadow_of_chaos` ∈ `own_dz \| nml \| opp_dz` (mesma semântica no cliente e no servidor), `game.round`.
 - Profundidade ≤5; ≤20 nós.
 
 **`effect_kind`:** `reminder`, `allow` (anula uma `restriction_key`), `deny`, `prompt` (ex.: Shadow of Chaos), `stratagem`.
@@ -690,12 +691,16 @@ CREATE TABLE faction_round_states (
   id UUID PRIMARY KEY,
   game_id UUID NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   round SMALLINT NOT NULL, player TEXT NOT NULL CHECK (player IN ('me','opponent')),
+  turn_player TEXT NOT NULL CHECK (turn_player IN ('me','opponent')),
+  phase TEXT NOT NULL,
   state_key TEXT NOT NULL CHECK (state_key IN ('shadow_of_chaos')),
   objectives_controlled SMALLINT CHECK (objectives_controlled BETWEEN 0 AND 20),
-  whole_board BOOLEAN,
+  whole_board BOOLEAN, -- legado; preferir nml_in_shadow / opp_dz_in_shadow
+  nml_in_shadow BOOLEAN,
+  opp_dz_in_shadow BOOLEAN,
   value JSONB NOT NULL DEFAULT '{}',
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (game_id, round, player, state_key)
+  UNIQUE (game_id, round, turn_player, phase, state_key)
 );
 ```
 
@@ -861,8 +866,8 @@ erDiagram
 3. Lista · 4. Líderes · 5. Guia de turno · 6. Colar minha colinha.
 7. **Nova partida:** oponente, missão, quem começa, CP inicial.
 8. **Partida ao vivo** (coração do app): header (rodada, jogador, fase, CP, VP), unidades com status do motor, stratagems da fase, barra de fases + "Próxima fase".
-9. **Command:** CP, **Shadow of Chaos** (stepper de objetivos + "Tabuleiro todo em Shadow?"), lembretes.
-10. **Battle-shock:** a testar → Passou / Falhou.
+9. **Command:** Gain Core CP (+1 para cada); card do Shadow da fase (TdN / zona do oponente; minha zona sempre); lembretes.
+10. **Battle-shock:** lista quem está em battle-shock ou na metade ou abaixo; mostra o Shadow da fase (Manifestation / Terror); Passou / Falhou.
 11. **Fim de turno:** checklist de missões/secundárias/ações; objetivos; VP.
 12. **Resumo da partida:** VP por rodada, CP, stratagems, linha do tempo com desfazer.
 13. Armas (4), Mapa (5), Diff (6), Catálogo/Regras (editor de condição em formulário), Config.
@@ -923,8 +928,8 @@ Lint: `react/no-danger`.
 - *Shooting:* quem avançou aparece **cinza com ⊘ "Avançou — sem ASSAULT"** (ou "Só armas ASSAULT"); quem recuou ou está em ação também, com o motivo; um toque nas ativas marca "Atirou".
 - *Charge:* avançou/recuou → inativa, salvo `allow` ("Permitido por X").
 - *Fight:* "Engajadas / Carregaram" primeiro; um toque marca "Lutou".
-- *Command:* "CP +1"; card **Shadow of Chaos** ("Objetivos controlados: 2", "Tabuleiro todo em Shadow?"); lembretes.
-- *Battle-shock:* **Passou / Falhou** por unidade.
+- *Command:* "Gain Core CP (+1 para cada)"; card **Shadow nesta fase** ("TdN no Shadow? (2/4 objetivos ✓)", "Zona do oponente no Shadow? (0/1)", "Minha zona: sempre"); lembretes.
+- *Battle-shock:* unidades em battle-shock ou na metade ou abaixo; **Passou / Falhou** por unidade; Shadow da fase.
 - *Fim de turno:* checklist (primária, "Bring It Down", "Assassination", ações) + `ObjectiveGrid` + `ScorePad`.
 - *Demais telas:* como na v0.2 (pontos abaixo/exato/acima com texto; "Armas não verificadas"; mapa com tocar-para-posicionar no mobile, arrastar no desktop, régua com lupa/snap, `touch-action: none`, PNG pixelRatio 2).
 
@@ -987,7 +992,7 @@ Lint: `react/no-danger`.
 1. Importar o JSON (e o texto) de Daemons → **1975 pts** + pares de líder.
 2. "Preparar pra mesa" → offline → recarregar → lista, guia e badge abrem.
 3. **Nova partida offline** → Movement: Daemonettes **Avançou** → Shooting: **Daemonettes cinza com "Avançou — sem ASSAULT"**; unidade com arma ASSAULT (fixture) ativa só com ela.
-4. Command: prompt de Shadow of Chaos; CP +1; stratagem reduz o CP; repetir na mesma fase → aviso de limite.
+4. Command: Shadow por fase; Gain Core CP dá +1 aos dois; battle-shock persiste entre turnos; stratagem reduz o CP; repetir na mesma fase → aviso de limite.
 5. Fechar/reabrir offline → estado intacto; online → sync; reenviar não duplica.
 6. **401 com partida ativa** → login; dados preservados.
 7. Rede cai no meio do "Preparar pra mesa" → abre com o bundle anterior.
@@ -1052,7 +1057,7 @@ Lint: `react/no-danger`.
 | 8 | iOS ≥16.4? | Aberta |
 | 9 | Rastrear as unidades do oponente? | **Aberta:** proposta MVP = só as minhas + CP/VP do oponente |
 | 10 | Estrutura real do JSON do NR e `[n]` | **Aberta:** pedir 1 JSON + 1 texto com duas unidades iguais |
-| 11 | Shadow of Chaos na edição vigente | **Aberta:** resumo do usuário + check do Juiz |
+| 11 | Shadow of Chaos na edição vigente | **Fechada** em 20/10/2026: Faction Pack Daemons v1.2, p. 2 e FAQ p. 131. Fica aberta só a pergunta dos raios de 6" e 9" (lembrete de texto no MVP). |
 
 ---
 
