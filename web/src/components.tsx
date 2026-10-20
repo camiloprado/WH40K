@@ -16,6 +16,15 @@ export function HypothesisBadge({ on }: { on?: boolean }) {
   return <span className="hypothesis">HIPÓTESE</span>;
 }
 
+export function ConditionalBadge({ on, text }: { on?: boolean; text?: string }) {
+  if (!on) return null;
+  return (
+    <span className="hypothesis" title={text || undefined}>
+      condicional{text ? `: ${text}` : ""}
+    </span>
+  );
+}
+
 export function WakeLockChip({ supported }: { supported: boolean }) {
   if (supported) return null;
   return (
@@ -84,10 +93,25 @@ export function ArmyHeader({ name, points, state }: { name: string; points: stri
   );
 }
 
-export function EffectRow({ text, name, owner, hypothesis }: { text: string; name: string; owner: string; hypothesis?: boolean }) {
+export function EffectRow({
+  text,
+  name,
+  owner,
+  hypothesis,
+  conditional,
+  conditionText,
+}: {
+  text: string;
+  name: string;
+  owner: string;
+  hypothesis?: boolean;
+  conditional?: boolean;
+  conditionText?: string;
+}) {
   return (
     <p>
-      {text} — {name} ({owner}) <HypothesisBadge on={hypothesis} />
+      {text} — {name} ({owner}) <HypothesisBadge on={hypothesis} />{" "}
+      <ConditionalBadge on={conditional} text={conditionText} />
     </p>
   );
 }

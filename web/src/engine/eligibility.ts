@@ -49,6 +49,8 @@ const con_strBlast = "BLAST";
 export type GameFacts = {
   round?: number;
   shadow?: string[];
+  /** true quando nml/opp_dz foram informados nesta fase. */
+  shadowComplete?: boolean;
   turnOwner?: "own" | "opponent";
   isLeading?: boolean;
 };
@@ -363,7 +365,14 @@ function keywordFilter(node: Record<string, unknown> | undefined): string | null
 /** Avalia condition_json contra fatos de jogo (paridade com condition.matches). */
 export function matchCondition(
   node: Record<string, unknown>,
-  facts: { shadow_areas?: string[]; turn_owner?: string; is_leading?: boolean; round?: number; [key: string]: unknown },
+  facts: {
+    shadow_areas?: string[];
+    shadow_areas_complete?: boolean;
+    turn_owner?: string;
+    is_leading?: boolean;
+    round?: number;
+    [key: string]: unknown;
+  },
 ): boolean {
   return matches(node, {
     phase: String(facts.phase || "command"),
@@ -382,8 +391,57 @@ export function matchCondition(
       turnOwner: facts.turn_owner as "own" | "opponent" | undefined,
       isLeading: Boolean(facts.is_leading),
       shadow: facts.shadow_areas as string[] | undefined,
+      shadowComplete: Boolean(facts.shadow_areas_complete),
     },
   });
+}
+
+function shadowUnevaluable(expected: unknown, areas: string[], complete: boolean): boolean {
+  if (complete) return false;
+  if (expected === true || expected === false) return true;
+  const area = String(expected);
+  if (area === "nml" || area === "opp_dz") return !areas.includes(area);
+  return false;
+}
+
+function conditionUnevaluable(
+  node: Record<string, unknown>,
+  facts: { shadow_areas?: string[]; shadow_areas_complete?: boolean },
+): boolean {
+  if (!node || Object.keys(node).length === 0) return false;
+  if (Array.isArray(node.all)) return node.all.some((child) => conditionUnevaluable(child as Record<string, unknown>, facts));
+  if (Array.isArray(node.any)) return node.any.some((child) => conditionUnevaluable(child as Record<string, unknown>, facts));
+  if (node.not) return conditionUnevaluable(node.not as Record<string, unknown>, facts);
+  const [key, expected] = Object.entries(node)[0];
+  if (key === "game.shadow_of_chaos") {
+    return shadowUnevaluable(expected, facts.shadow_areas || [], Boolean(facts.shadow_areas_complete));
+  }
+  return false;
+}
+
+export function conditionLabel(node: Record<string, unknown> | null | undefined): string {
+  if (!node || Object.keys(node).length === 0) return "";
+  if (Array.isArray(node.all)) return node.all.map((child) => conditionLabel(child as Record<string, unknown>)).join(" e ");
+  if (Array.isArray(node.any)) return node.any.map((child) => conditionLabel(child as Record<string, unknown>)).join(" ou ");
+  if (node.not) return `não (${conditionLabel(node.not as Record<string, unknown>)})`;
+  const [key, expected] = Object.entries(node)[0];
+  if (key === "game.shadow_of_chaos") {
+    if (expected === true) return "Shadow ativo (TdN ou DZ do oponente)";
+    if (expected === false) return "Shadow só na própria DZ";
+    return `Shadow: ${expected}`;
+  }
+  return `${key}=${expected}`;
+}
+
+/** Guia/lembrete: fato não avaliável não filtra (R1). Elegibilidade allow/deny usa matchCondition (M6). */
+export function guideMatch(
+  node: Record<string, unknown> | null | undefined,
+  facts: { shadow_areas?: string[]; shadow_areas_complete?: boolean; turn_owner?: string; phase?: string; [key: string]: unknown },
+): { include: boolean; conditional: boolean } {
+  if (!node || Object.keys(node).length === 0) return { include: true, conditional: false };
+  if (matchCondition(node, facts)) return { include: true, conditional: false };
+  if (conditionUnevaluable(node, facts)) return { include: true, conditional: true };
+  return { include: false, conditional: false };
 }
 
 function matches(

@@ -42,7 +42,13 @@ from app.models import (
     WeaponCheckMark,
     CpLedger,
 )
-from app.services.condition import validate_condition, ConditionError, matches
+from app.services.condition import (
+    ConditionError,
+    condition_label,
+    guide_match,
+    matches,
+    validate_condition,
+)
 from app.services.project import apply_events
 
 PHASE_ORDER = [
@@ -273,11 +279,15 @@ def turn_guide(
     else:
         effects = db.scalars(select(RuleEffect).where(RuleEffect.ability_id.in_(abilities)).order_by(RuleEffect.sort_order)).all()
     units = units_for(db, version.id)
-    facts = facts or {}
+    facts = dict(facts or {})
     if turn_owner and "turn_owner" not in facts:
-        facts = {**facts, "turn_owner": turn_owner}
+        facts["turn_owner"] = turn_owner
     if phase and "phase" not in facts:
-        facts = {**facts, "phase": phase}
+        facts["phase"] = phase
+    # Própria DZ sempre no Shadow (Daemons p2); guia sem estado de partida (R1).
+    if "shadow_areas" not in facts:
+        facts["shadow_areas"] = ["own_dz"]
+    facts.setdefault("shadow_areas_complete", False)
     phases: dict[str, dict[str, list]] = {name: {"start": [], "during": [], "end": []} for name in PHASE_ORDER}
     for effect in effects:
         ability = abilities[effect.ability_id]
@@ -285,7 +295,13 @@ def turn_guide(
             continue
         if turn_owner and effect.turn_owner not in {turn_owner, "both"}:
             continue
-        if effect.condition_json and not matches(effect.condition_json, facts):
+        include, conditional = True, False
+        cond_text = ""
+        if effect.condition_json:
+            include, conditional = guide_match(effect.condition_json, facts)
+            if conditional:
+                cond_text = condition_label(effect.condition_json)
+        if not include:
             continue
         unit_ids = _effect_units(db, ability, units)
         if unit_id and unit_ids and unit_id not in unit_ids:
@@ -298,6 +314,8 @@ def turn_guide(
                 "effect_kind": effect.effect_kind,
                 "unit_ids": unit_ids,
                 "is_hypothesis": effect.is_hypothesis or ability.is_hypothesis,
+                "is_conditional": conditional,
+                "condition_text": cond_text,
                 "range_in": effect.range_in,
                 "choice_options": list(effect.choice_options or []),
                 "choice_count": effect.choice_count,
@@ -331,6 +349,9 @@ def guide_markdown(payload: dict) -> str:
             lines.append(f"### {group['timing']}")
             for row in group["rows"]:
                 mark = " (HIPÓTESE)" if row["is_hypothesis"] else ""
+                if row.get("is_conditional"):
+                    cond = row.get("condition_text") or "condicional"
+                    mark = f"{mark} (condicional: {cond})".strip()
                 lines.append(f"- {row['effect_text']} — {row['ability_name']} ({row['owner_label']}){mark}")
         lines.append("")
     return "\n".join(lines)

@@ -6,6 +6,7 @@ import { Stage, Layer, Circle, Rect, Text, Line } from "react-konva";
 import { api, login, logout } from "./api";
 import { bundleFor, db, deviceId, saveBundle } from "./db";
 import { expectedDamage } from "./engine/damage";
+import { conditionLabel, guideMatch } from "./engine/eligibility";
 import { applyEvents } from "./engine/project";
 import { deleteMatch, finishMatch, flushSync } from "./sync";
 import { EffectRow, ParseWarnings } from "./components";
@@ -916,7 +917,15 @@ export function GuideScreen() {
             {phase.groups
               .flatMap((group: any) => group.rows)
               .map((row: any, index: number) => (
-                <EffectRow key={index} text={row.effect_text} name={row.ability_name} owner={row.owner_label} hypothesis={row.is_hypothesis} />
+                <EffectRow
+                  key={index}
+                  text={row.effect_text}
+                  name={row.ability_name}
+                  owner={row.owner_label}
+                  hypothesis={row.is_hypothesis}
+                  conditional={row.is_conditional}
+                  conditionText={row.condition_text}
+                />
               ))}
           </section>
         ))}
@@ -930,8 +939,20 @@ function offlineGuide(bundle: any, owner: string) {
   for (const effect of bundle.rule_effects || []) {
     if (owner && effect.turn_owner && !["both", owner].includes(effect.turn_owner)) continue;
     const ability = (bundle.abilities || []).find((item: any) => item.id === effect.ability_id);
+    const gate = guideMatch(effect.condition_json || {}, {
+      shadow_areas: ["own_dz"],
+      shadow_areas_complete: false,
+      turn_owner: owner,
+      phase: effect.phase,
+    });
+    if (!gate.include) continue;
     phases[effect.phase] = phases[effect.phase] || [];
-    phases[effect.phase].push({ ...effect, ability_name: ability?.name || "" });
+    phases[effect.phase].push({
+      ...effect,
+      ability_name: ability?.name || "",
+      is_conditional: gate.conditional,
+      condition_text: gate.conditional ? conditionLabel(effect.condition_json || {}) : "",
+    });
   }
   return {
     phases: Object.entries(phases).map(([phase, rows]) => ({ phase, groups: [{ timing: "during", rows }] })),

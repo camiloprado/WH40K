@@ -122,3 +122,76 @@ def matches(node: object, facts: dict) -> bool:
     if var_strKey in con_setFactKeys or var_strKey.startswith("state."):
         return facts.get(var_strKey) == var_objExpected
     return False
+
+
+def _shadow_unevaluable(expected: object, facts: dict) -> bool:
+    """Sem mapa completo da Shadow, nml/opp_dz e o booleano True/False não são decidíveis (R1)."""
+    if facts.get("shadow_areas_complete"):
+        return False
+    if expected is True or expected is False:
+        return True
+    var_strArea = str(expected)
+    if var_strArea in ("nml", "opp_dz"):
+        return var_strArea not in list(facts.get("shadow_areas") or [])
+    return False
+
+
+def condition_unevaluable(node: object, facts: dict) -> bool:
+    """Fato que o guia/lembrete não consegue avaliar (não filtra; selo condicional)."""
+    if node in (None, {}):
+        return False
+    if not isinstance(node, dict):
+        return False
+    if "all" in node:
+        return any(condition_unevaluable(child, facts) for child in node["all"])
+    if "any" in node:
+        return any(condition_unevaluable(child, facts) for child in node["any"])
+    if "not" in node:
+        return condition_unevaluable(node["not"], facts)
+    var_strKey, var_objExpected = next(iter(node.items()))
+    if var_strKey == "game.shadow_of_chaos":
+        return _shadow_unevaluable(var_objExpected, facts)
+    if var_strKey.startswith("state.") and "state" not in facts:
+        return True
+    if var_strKey in ("unit_keyword", "weapon_keyword", "is_leading", "game.round") and var_strKey.split(".")[-1] not in facts and var_strKey not in facts:
+        if var_strKey == "unit_keyword" and "unit_keywords" not in facts:
+            return True
+        if var_strKey == "weapon_keyword" and "weapon_keywords" not in facts:
+            return True
+        if var_strKey == "is_leading" and "is_leading" not in facts:
+            return True
+        if var_strKey == "game.round" and "round" not in facts:
+            return True
+    return False
+
+
+def guide_match(node: object, facts: dict) -> tuple[bool, bool]:
+    """Guia/lembrete: (incluir, condicional). Motor allow/deny continua em matches() (M6)."""
+    if node in (None, {}):
+        return True, False
+    if matches(node, facts):
+        return True, False
+    if condition_unevaluable(node, facts):
+        return True, True
+    return False, False
+
+
+def condition_label(node: object) -> str:
+    if node in (None, {}):
+        return ""
+    if not isinstance(node, dict):
+        return str(node)
+    if "all" in node:
+        return " e ".join(condition_label(child) for child in node["all"])
+    if "any" in node:
+        return " ou ".join(condition_label(child) for child in node["any"])
+    if "not" in node:
+        return f"não ({condition_label(node['not'])})"
+    var_strKey, var_objExpected = next(iter(node.items()))
+    if var_strKey == "game.shadow_of_chaos":
+        if var_objExpected is True:
+            return "Shadow ativo (TdN ou DZ do oponente)"
+        if var_objExpected is False:
+            return "Shadow só na própria DZ"
+        return f"Shadow: {var_objExpected}"
+    return f"{var_strKey}={var_objExpected}"
