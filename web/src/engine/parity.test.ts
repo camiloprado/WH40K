@@ -7,7 +7,7 @@ import { applyEvents, type GameEvent } from "./project";
 const root = resolve(__dirname, "../../../fixtures");
 
 describe("paridade de condições", () => {
-  const cases = JSON.parse(readFileSync(resolve(root, "conditions/shadow.json"), "utf8")) as {
+  const cases = JSON.parse(readFileSync(resolve(root, "conditions/shadow.json"), "utf8").replace(/^\uFEFF/, "")) as {
     name: string;
     node: Record<string, unknown>;
     facts: Record<string, unknown>;
@@ -22,7 +22,7 @@ describe("paridade de condições", () => {
 
 describe("paridade de eventos Shadow", () => {
   it("legado e fase batem com o expect da fixture", () => {
-    const fixture = JSON.parse(readFileSync(resolve(root, "events/shadow.json"), "utf8")) as {
+    const fixture = JSON.parse(readFileSync(resolve(root, "events/shadow.json"), "utf8").replace(/^\uFEFF/, "")) as {
       events: { seq: number; type: string; payload: Record<string, unknown>; created_at: string }[];
       expect: { warnings_contains: string[]; shadow_count: number; last_nml: boolean; last_opp: boolean };
     };

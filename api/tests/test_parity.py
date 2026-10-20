@@ -10,13 +10,13 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_condition_fixtures():
-    rows = json.loads((ROOT / "fixtures" / "conditions" / "shadow.json").read_text(encoding="utf-8"))
+    rows = json.loads((ROOT / "fixtures" / "conditions" / "shadow.json").read_text(encoding="utf-8-sig"))
     for row in rows:
         assert matches(row["node"], row["facts"]) is row["expected"], row["name"]
 
 
 def test_shadow_event_fixture_and_server():
-    fixture = json.loads((ROOT / "fixtures" / "events" / "shadow.json").read_text(encoding="utf-8"))
+    fixture = json.loads((ROOT / "fixtures" / "events" / "shadow.json").read_text(encoding="utf-8-sig"))
     events = []
     for item in fixture["events"]:
         events.append(
