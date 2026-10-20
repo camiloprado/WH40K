@@ -1078,7 +1078,7 @@ function ShadowPhaseCard({ projection, push }: { projection: Projection; push: P
   return (
     <div className="shadow">
       <p>
-        Shadow nesta fase <HypothesisBadge on />
+        Shadow nesta fase
         {!var_objNow.known && <span className="warn"> — não informado nesta fase</span>}
       </p>
       <p className="muted">Minha zona: sempre</p>
