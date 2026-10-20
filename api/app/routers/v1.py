@@ -13,6 +13,7 @@ from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.db import db_session
 from app.errors import err
 from app.models import (
@@ -60,7 +61,10 @@ from app.services.views import (
 )
 
 router = APIRouter(prefix="/api/v1")
-BACKUP_DIR = Path("backups")
+
+
+def _backup_dir() -> Path:
+    return Path(get_settings().backup_dir)
 
 
 def db() -> Session:
@@ -167,7 +171,7 @@ def restore(body: dict, database: Session = Depends(db_session), _s=Depends(auth
     _confirm(body, "RESTAURAR")
     if "data" not in body:
         err(400, "invalid_input", "Backup ausente")
-    restore_backup(database, body["data"], BACKUP_DIR)
+    restore_backup(database, body["data"], _backup_dir())
     return {"ok": True}
 
 
@@ -250,8 +254,9 @@ def delete_list(list_id: int, body: dict, database: Session = Depends(db_session
     if any(game.status == "active" for game in linked):
         err(409, "list_in_use", "Partida em andamento. Finalize ou apague a partida antes.")
     _detach_finished_games(database, version_ids, linked, item.name)
-    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
-    (BACKUP_DIR / f"list-{list_id}.json").write_text(
+    var_objBackup = _backup_dir()
+    var_objBackup.mkdir(parents=True, exist_ok=True)
+    (var_objBackup / f"list-{list_id}.json").write_text(
         __import__("json").dumps(export_backup(database), ensure_ascii=False), encoding="utf-8"
     )
     database.delete(item)

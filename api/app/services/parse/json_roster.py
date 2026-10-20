@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 
 from app.services.parse.leaders import pair_leaders
@@ -18,6 +19,7 @@ from app.services.parse.text_parser import _enhancement_sums
 MAX_NODES = 5000
 MAX_DEPTH = 20
 MAX_STR = 500
+MAX_ABS_INT = 10**7
 DICE_RE = re.compile(r"^(?:\d{1,2}|D3|D6|\d?D[36](?:\+\d{1,2})?)$")
 LEADING_RE = re.compile(r"^Leading\s+(.{1,200}?)(?:\[(\d{1,3})\])?$", re.IGNORECASE)
 STRUCTURAL = {
@@ -111,7 +113,17 @@ def _sanitize(node, depth: int, counter: list[int], result: ParseResult, path: s
             result.warnings.append(ParseWarning(json_path=path, reason="truncated", text=node[:80]))
             return node[:MAX_STR]
         return node
-    if isinstance(node, (int, float, bool)) or node is None:
+    if isinstance(node, bool) or node is None:
+        return node
+    if isinstance(node, int):
+        if abs(node) > MAX_ABS_INT:
+            result.warnings.append(ParseWarning(json_path=path, reason="number_out_of_range"))
+            return None
+        return node
+    if isinstance(node, float):
+        if not math.isfinite(node) or abs(node) > MAX_ABS_INT:
+            result.warnings.append(ParseWarning(json_path=path, reason="number_out_of_range"))
+            return None
         return node
     return None
 

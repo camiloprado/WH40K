@@ -14,6 +14,10 @@ def main() -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(digest, encoding="utf-8")
     try:
+        path.chmod(0o600)
+    except OSError:
+        pass
+    try:
         db = session_factory()()
         invalidate_all(db)
         db.commit()

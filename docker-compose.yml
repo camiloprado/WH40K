@@ -21,6 +21,11 @@ services:
       DATABASE_URL: postgresql+psycopg://wh40k:wh40k@db:5432/wh40k
       APP_TOKEN_HASH: ${APP_TOKEN_HASH:-}
       EXTRA_HOSTS: ${EXTRA_HOSTS:-}
+      TOKEN_HASH_FILE: /app/data/app_token_hash
+      BACKUP_DIR: /app/backups
+    volumes:
+      - apidata:/app/data
+      - apibackups:/app/backups
     depends_on:
       db:
         condition: service_healthy
@@ -32,7 +37,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile.caddy
     ports:
-      - "127.0.0.1:443:443"
+      - "127.0.0.1:18081:80"
     depends_on:
       - api
     volumes:
@@ -42,3 +47,5 @@ services:
 volumes:
   pgdata:
   caddydata:
+  apidata:
+  apibackups:

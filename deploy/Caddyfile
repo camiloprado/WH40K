@@ -2,29 +2,10 @@
 	admin off
 }
 
-:443 {
-	tls internal
-	encode gzip
-	request_body {
-		max_size 200KB
-	}
-	header {
-		Content-Security-Policy "default-src 'self'; frame-ancestors 'none'"
-		X-Content-Type-Options "nosniff"
-		Referrer-Policy "no-referrer"
-		-Server
-	}
-	handle /api/* {
-		reverse_proxy api:8000
-	}
-	handle {
-		root * /srv/web
-		try_files {path} /index.html
-		file_server
-	}
-}
-
+# HTTP em loopback. Na frente: `tailscale serve --bg --https=443 http://127.0.0.1:18081`
+# Nunca usar `tailscale funnel`. Certificado *.ts.net fica com o Tailscale (sem tls internal).
 :80 {
+	encode gzip
 	request_body {
 		max_size 200KB
 	}

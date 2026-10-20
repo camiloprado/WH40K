@@ -7,6 +7,3 @@ services:
       APP_ENV: dev
     ports:
       - "127.0.0.1:18001:8000"
-  caddy:
-    ports:
-      - "127.0.0.1:18081:80"

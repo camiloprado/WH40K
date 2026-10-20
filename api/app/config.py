@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     app_token_hash: str = ""
     extra_hosts: str = ""
     token_hash_file: str = "data/app_token_hash"
+    backup_dir: str = "backups"
     bsdata_cache_dir: str = "data/bsdata"
 
 

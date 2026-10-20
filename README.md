@@ -71,13 +71,24 @@ Para jogar sem rede: na lista, use **Preparar pra mesa**, comece a partida e pod
 
 ### Stack completo
 
-`make` não vem no Windows. Com Make instalado, `make up` sobe Postgres, API e Caddy pelo `docker-compose.yml` (só o Caddy publica porta, em `127.0.0.1:443`). Os alvos `token`, `migrate`, `seed`, `backup`, `test` e `e2e` rodam dentro dos containers.
+`make` não vem no Windows. Com Make instalado, `make up` sobe Postgres, API e Caddy pelo `docker-compose.yml` (Caddy em `127.0.0.1:18081` HTTP). Os alvos `token`, `migrate`, `seed`, `backup`, `test` e `e2e` rodam dentro dos containers.
 
 Com o overlay de desenvolvimento:
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
 ```
+
+### Usar no celular (Tailscale)
+
+O Caddy fica só em loopback HTTP. O HTTPS e o certificado válidos vêm do Tailscale na frente do PC:
+
+```powershell
+# com a stack no ar (Caddy em 127.0.0.1:18081)
+tailscale serve --bg --https=443 http://127.0.0.1:18081
+```
+
+No Android da mesma tailnet, abra `https://<seu-pc>.<tailnet>.ts.net`. O PWA instala sem aviso de certificado. **Não** use `tailscale funnel` (expõe à internet). Volumes `apidata` e `apibackups` preservam o hash do token e os backups entre rebuilds.
 
 ## Testes
 

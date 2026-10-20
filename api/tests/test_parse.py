@@ -299,3 +299,21 @@ TOTAL: 10
     result = parse(raw, known_detachments=["Rad-Zone Corps", "Skitarii Hunter Cohort"])
     assert result.format == "nr_text_wtc_full"
     assert [item.name for item in result.header.detachments] == ["Rad-Zone Corps", "Skitarii Hunter Cohort"]
+
+
+def test_json_deep_nesting():
+    blob = "{" * 70 + "0" + "}" * 70
+    result = parse(blob)
+    assert result.format == "nr_json"
+    assert any(warning.reason == "json_invalid" for warning in result.warnings)
+
+
+def test_json_huge_int():
+    result = parse('{"roster":{"costs":[{"name":"pts","value":' + ("9" * 5000) + "}]}}")
+    assert any(warning.reason == "json_invalid" for warning in result.warnings)
+
+
+def test_json_nan_infinity():
+    for raw in ('{"x": NaN}', '{"x": Infinity}', '{"x": -Infinity}'):
+        result = parse(raw)
+        assert any(warning.reason == "json_invalid" for warning in result.warnings), raw
