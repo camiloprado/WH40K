@@ -54,6 +54,7 @@ export async function flushSync() {
     var_lstEvents.push(var_objItem.event);
     var_dctByGame.set(var_objItem.game_id, var_lstEvents);
   }
+  let var_intRejectedTotal = 0;
   for (const [var_strGameId, var_lstEvents] of var_dctByGame) {
     const var_objGame = await db.games.get(var_strGameId);
     if (!var_objGame) continue;
@@ -79,22 +80,34 @@ export async function flushSync() {
         }),
       });
       const var_setDone = new Set([...(var_objResult.accepted || []), ...(var_objResult.duplicates || [])]);
-      var_intRejected = (var_objResult.rejected || []).length;
+      const var_setRejectedIds = new Set((var_objResult.rejected || []).map((item) => item.id));
+      var_intRejectedTotal += var_setRejectedIds.size;
       await db.sync_queue
         .where("game_id")
         .equals(var_strGameId)
-        .filter((item) => var_setDone.has(item.event.id))
+        .filter((item) => var_setDone.has(item.event.id) || var_setRejectedIds.has(item.event.id))
         .delete();
       var_boolServerDown = false;
       var_intBackoffMs = 30_000;
       notify();
-    } catch {
+    } catch (err) {
+      const var_intStatus = Number((err as { status?: number }).status || 0);
+      // BG2: 4xx de validação → rejeitados (não "Servidor fora").
+      if (var_intStatus >= 400 && var_intStatus < 500 && var_intStatus !== 401) {
+        var_intRejectedTotal += var_lstEvents.length;
+        await db.sync_queue.where("game_id").equals(var_strGameId).delete();
+        var_boolServerDown = false;
+        notify();
+        continue;
+      }
       var_boolServerDown = true;
       notify();
       scheduleRetry();
       return;
     }
   }
+  var_intRejected = var_intRejectedTotal;
+  notify();
   const var_intLeft = await db.sync_queue.count();
   if (var_intLeft) scheduleRetry();
 }

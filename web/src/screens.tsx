@@ -1700,7 +1700,8 @@ export function CatalogScreen() {
                     <button
                       className="ghost link"
                       onClick={async () => {
-                        if (!window.confirm("Apagar este efeito?")) return;
+                        const { askConfirm } = await import("./confirm");
+                        if (!(await askConfirm("Apagar este efeito?"))) return;
                         await api(`/effects/${effect.id}`, { method: "DELETE", body: "{}" });
                         effects.refetch();
                       }}

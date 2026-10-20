@@ -47,7 +47,10 @@ export async function login(token: string) {
 
 export async function logout() {
   const var_intPending = await import("./db").then(({ db }) => db.sync_queue.count());
-  if (var_intPending && !window.confirm("Há eventos pendentes. Sair mesmo assim apaga a cópia local.")) return false;
+  if (var_intPending) {
+    const { askConfirm } = await import("./confirm");
+    if (!(await askConfirm("Há eventos pendentes. Sair mesmo assim apaga a cópia local."))) return false;
+  }
   await api("/session", { method: "DELETE", body: "{}" }).catch(() => undefined);
   const { db } = await import("./db");
   await db.delete();

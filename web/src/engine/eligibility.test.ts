@@ -281,6 +281,24 @@ describe("elegibilidade", () => {
     expect(nml).toEqual({ include: true, conditional: true });
   });
 
+  it("C15 OC null não bloqueia; ação só falha se moveu depois", () => {
+    expect(canStartAction(base(), [], { oc: null })).not.toContain("OC 0/–: não começa ação");
+    expect(canStartAction(base(), [], { oc: 0 })).toContain("OC 0/–: não começa ação");
+    const ok = evaluateUnit({
+      phase: "shooting",
+      unit: base({ moved: "advanced", on_action: true, action_started_moved: "advanced" }),
+      weapons: [{ name: "Rifle", kind: "ranged", keywords: ["ASSAULT"] }],
+    });
+    expect(ok.reasons).not.toContain("Ação não conclui: moveu depois de começar");
+    const fail = evaluateUnit({
+      phase: "shooting",
+      unit: base({ moved: "normal", on_action: true, action_started_moved: "none" }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+    });
+    expect(fail.reasons).toContain("Ação não conclui: moveu depois de começar");
+    expect(canStartAction(base(), [], { snapShooting: true })).toContain("Fez snap shooting: não começa ação nesta fase");
+  });
+
   it("C14 reservas: R1 inactive; must_ingress com opp primeiro; R2 warn", () => {
     const r1 = evaluateUnit({
       phase: "movement",

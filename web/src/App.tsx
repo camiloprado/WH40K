@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useSession } from "./api";
+import { ConfirmHost, askConfirm } from "./confirm";
 import { db } from "./db";
 import { flushSync } from "./sync";
 import { GameScreen } from "./GameScreen";
@@ -64,8 +65,8 @@ export function App() {
           Nova versão disponível
           <button
             className="primary"
-            onClick={() => {
-              if (inGame && !window.confirm("Recarregar agora? A partida fica salva neste aparelho.")) return;
+            onClick={async () => {
+              if (inGame && !(await askConfirm("Recarregar agora? A partida fica salva neste aparelho."))) return;
               (window as unknown as { __applyUpdate?: () => void }).__applyUpdate?.();
             }}
           >
@@ -73,6 +74,7 @@ export function App() {
           </button>
         </div>
       )}
+      <ConfirmHost />
       <Routes>
         <Route path="/login" element={<LoginScreen />} />
         <Route path="/" element={needsAuth ? <Navigate to="/login" /> : <HomeScreen />} />

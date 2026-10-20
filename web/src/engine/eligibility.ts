@@ -14,6 +14,12 @@ export type UnitSnapshot = {
   /** C14 / Realm of Chaos: deve fazer ingress no próximo Movement. */
   must_ingress?: boolean;
   below_half?: boolean;
+  /** C15: moved no instante em que a ação começou. */
+  action_started_moved?: Moved | null;
+  /** C15/C11: usou Fire Overwatch (snap shooting). */
+  snap_shooting?: boolean;
+  /** N8: ordered | desperate */
+  fall_back_mode?: "ordered" | "desperate" | null;
   overrides?: { key: string }[];
 };
 
@@ -76,7 +82,8 @@ export function canStartAction(
   }
   if (unit.battle_shocked) var_lstReasons.push("Em battle-shock: não começa ação");
   const var_mixOc = opts?.oc;
-  if (var_mixOc === 0 || var_mixOc === "–" || var_mixOc === "-" || var_mixOc === null) {
+  // OC null = desconhecido: não bloqueia (C15).
+  if (var_mixOc === 0 || var_mixOc === "–" || var_mixOc === "-") {
     var_lstReasons.push("OC 0/–: não começa ação");
   }
   if (unit.engaged && !var_boolTitanic) var_lstReasons.push("Engajada: não começa ação");
@@ -146,11 +153,38 @@ export function evaluateUnit(input: {
   if (input.phase === "shooting" && !hasRanged(var_lstWeapons)) {
     return { status: "done", reasons: ["Sem arma de tiro"], allowedWeapons: [], destroyed: false };
   }
+  // N8: lembretes de Movement antes do short-circuit de phaseDone.
+  const var_lstMoveHints: string[] = [];
+  if (input.phase === "movement") {
+    if (input.unit.engaged && input.unit.moved === "none") {
+      var_lstMoveHints.push("Engajada: fica parada ou recua");
+    }
+    if (input.unit.engaged && input.unit.battle_shocked && input.unit.moved === "none") {
+      var_lstMoveHints.push(
+        "Em battle-shock: se recuar, só Desperate Escape — hazard roll por modelo (1–2 = mortal wound)",
+      );
+    }
+    if (
+      input.unit.engaged &&
+      !input.unit.battle_shocked &&
+      input.unit.moved === "fell_back" &&
+      input.unit.fall_back_mode === "desperate"
+    ) {
+      var_lstMoveHints.push(
+        "Desperate Escape: hazard roll por modelo e teste de battle-shock depois de mover",
+      );
+    }
+  }
   const var_strDoneEarly = phaseDone(input.phase, input.unit);
   if (var_strDoneEarly) {
-    return { status: "done", reasons: [var_strDoneEarly], allowedWeapons: var_lstNames, destroyed: false };
+    return {
+      status: "done",
+      reasons: [...var_lstMoveHints, var_strDoneEarly],
+      allowedWeapons: var_lstNames,
+      destroyed: false,
+    };
   }
-  const var_lstReasons: string[] = [];
+  const var_lstReasons: string[] = [...var_lstMoveHints];
   let var_lstAllowed = var_lstNames;
   let var_boolInactive = false;
   if (var_boolReactive && var_strActive === "opponent") {
@@ -236,21 +270,6 @@ export function evaluateUnit(input: {
       var_lstAllowed = [];
     }
   }
-  if (input.phase === "movement") {
-    if (input.unit.engaged && input.unit.moved === "none") {
-      var_lstReasons.push("Engajada: fica parada ou recua");
-    }
-    if (input.unit.engaged && input.unit.battle_shocked && input.unit.moved === "none") {
-      var_lstReasons.push(
-        "Em battle-shock: se recuar, só Desperate Escape — hazard roll por modelo (1–2 = mortal wound)",
-      );
-    }
-    if (input.unit.engaged && !input.unit.battle_shocked && input.unit.moved === "fell_back") {
-      var_lstReasons.push(
-        "Desperate Escape: hazard roll por modelo e teste de battle-shock depois de mover",
-      );
-    }
-  }
   if (input.phase === "charge") {
     if (input.unit.engaged) {
       var_boolInactive = true;
@@ -282,17 +301,25 @@ export function evaluateUnit(input: {
     }
   }
   if (input.unit.moved === "advanced" || input.unit.moved === "fell_back") {
-    var_lstReasons.push(
-      input.unit.moved === "advanced"
-        ? "Avançou: não começa ação neste turno"
-        : "Recuou: não começa ação neste turno",
-    );
+    const var_strKey = input.unit.moved === "advanced" ? "action_after_advance" : "action_after_fall_back";
+    if (!var_fnPermitted(var_strKey)) {
+      var_lstReasons.push(
+        input.unit.moved === "advanced"
+          ? "Avançou: não começa ação neste turno"
+          : "Recuou: não começa ação neste turno",
+      );
+    }
   }
   if (input.unit.on_action) {
-    for (const var_strReason of canStartAction({ ...input.unit, on_action: false }, input.unitKeywords)) {
+    for (const var_strReason of canStartAction(
+      { ...input.unit, on_action: false },
+      input.unitKeywords,
+      { snapShooting: Boolean(input.unit.snap_shooting) },
+    )) {
       if (!var_lstReasons.includes(var_strReason)) var_lstReasons.push(var_strReason);
     }
-    if (input.unit.moved !== "none" && input.unit.moved !== "remained") {
+    const var_strStarted = input.unit.action_started_moved ?? "none";
+    if (input.unit.moved !== var_strStarted) {
       var_lstReasons.push("Ação não conclui: moveu depois de começar");
     }
   }

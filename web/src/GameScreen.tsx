@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type
 import { useLiveQuery } from "dexie-react-hooks";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { api } from "./api";
+import { askConfirm } from "./confirm";
 import { bundleFor, db, deviceId, storeBundle, type EventRecord } from "./db";
 import {
   activeChoice,
@@ -150,6 +151,9 @@ const BLANK: LiveUnit = {
   destroyed: false,
   in_reserves: false,
   must_ingress: false,
+  action_started_moved: null,
+  snap_shooting: false,
+  fall_back_mode: null,
   lane: "center",
   overrides: [],
 };
@@ -266,7 +270,10 @@ export function GameScreen() {
       const place: Place = zone === "table" ? live.lane || "center" : zone;
       const effects = effectsNow.filter((effect) => effect.unit_ids.includes(unit.id));
       const chosen = projection.choices
-        .filter((item) => item.list_unit_id === unit.id && isChoiceActive(item, projection.round, projection.player, projection.phase))
+        .filter((item) =>
+          item.list_unit_id === unit.id &&
+          isChoiceActive(item, projection.round, projection.player, projection.phase, projection.firstPlayer),
+        )
         .flatMap((item) => item.options);
       return { unit, live, result, zone, place, order, effects, chosen };
     });
@@ -360,8 +367,13 @@ export function GameScreen() {
 
   if (missing) {
     return (
-      <main className="screen">
-        <p className="card">Esta partida usa uma lista que não está neste aparelho. Conecte e abra a lista para baixar.</p>
+      <main className="screen stack">
+        <p className="card">Esta partida usa uma lista que não está neste aparelho. Conecte e prepare a cópia offline.</p>
+        {game?.listVersionId != null && (
+          <Link className="btn primary" to={`/versions/${game.listVersionId}`}>
+            Preparar agora
+          </Link>
+        )}
       </main>
     );
   }
@@ -406,7 +418,7 @@ export function GameScreen() {
     return keys.map((key) => ({ key }));
   }
 
-  function primary(card: Card) {
+  async function primary(card: Card) {
     const flag = phase === "shooting" ? "shot" : phase === "charge" ? "charged" : phase === "fight" ? "fought" : null;
     if (!flag) {
       setSelected(card.unit.id);
@@ -418,7 +430,7 @@ export function GameScreen() {
       return;
     }
     if (card.result.status === "inactive") {
-      if (!window.confirm(`${card.result.reasons.join(" · ")}. Registrar mesmo assim?`)) return;
+      if (!(await askConfirm(`${card.result.reasons.join(" · ")}. Registrar mesmo assim?`))) return;
       setUnit(card.unit.id, { [flag]: true }, `${label} (override)`, overrideKeys(card));
       return;
     }
@@ -448,6 +460,7 @@ export function GameScreen() {
       projection.round,
       projection.player,
       projection.phase,
+      projection.firstPlayer,
     );
 
   function choose(effect: PhaseEffect, unitId: number | null, options: string[]) {
@@ -465,7 +478,7 @@ export function GameScreen() {
   const generalActive = projection.choices.filter(
     (item) =>
       item.list_unit_id == null &&
-      isChoiceActive(item, projection.round, projection.player, projection.phase) &&
+      isChoiceActive(item, projection.round, projection.player, projection.phase, projection.firstPlayer) &&
       !generalEffects.some((effect) => effect.id === item.effect_id),
   );
 
@@ -662,6 +675,14 @@ export function GameScreen() {
             onPatch={(patch, label, overrides) => setUnit(selectedCard.unit.id, patch, label, overrides)}
             onPrimary={() => primary(selectedCard)}
             onBattleShock={(passed) => push("battleshock_result", { list_unit_id: selectedCard.unit.id, passed }, `${selectedCard.unit.datasheet_name}: ${passed ? "passou" : "falhou"}`)}
+            onClearBattleShockAbility={() =>
+              push(
+                "battleshock_result",
+                { list_unit_id: selectedCard.unit.id, passed: true, source: "ability" },
+                `${selectedCard.unit.datasheet_name}: battle-shock removido (habilidade)`,
+              )
+            }
+            onFlash={flash}
             onZone={(place) => moveTo(selectedCard.unit.id, place)}
             overrides={overrideKeys(selectedCard)}
             effects={
@@ -921,6 +942,7 @@ function UnitCard({
       <button
         className={`unit-card ${state} ${pending ? "pending" : ""} ${tapped ? "tapped" : ""} ${selected ? "selected" : ""}`}
         data-unit={unit.id}
+        aria-label={`${unit.datasheet_name}, ${statusLabel(card)}${result.reasons.length ? `: ${result.reasons[0]}` : ""}`}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.setData("text/unit", String(unit.id));
@@ -975,6 +997,29 @@ function UnitCard({
           </span>
         )}
       </button>
+      {["shooting", "charge", "fight"].includes(phase) && onTable && (
+        <button
+          type="button"
+          className="primary card-action"
+          aria-label={phase === "shooting" ? "Marcar tiro" : phase === "charge" ? "Marcar carga" : "Marcar luta"}
+          onClick={(event) => {
+            event.stopPropagation();
+            onPrimary();
+          }}
+        >
+          {phase === "shooting"
+            ? live.shot
+              ? "Desmarcar"
+              : "Atirou"
+            : phase === "charge"
+              ? live.charged
+                ? "Desmarcar"
+                : "Carregou"
+              : live.fought
+                ? "Desmarcar"
+                : "Lutou"}
+        </button>
+      )}
     </div>
   );
 }
@@ -999,6 +1044,8 @@ function Inspector({
   onPatch,
   onPrimary,
   onBattleShock,
+  onClearBattleShockAbility,
+  onFlash,
   onZone,
   overrides,
   effects,
@@ -1012,6 +1059,8 @@ function Inspector({
   onPatch: PatchFn;
   onPrimary: () => void;
   onBattleShock: (passed: boolean) => void;
+  onClearBattleShockAbility: () => void;
+  onFlash: (message: string) => void;
   onZone: (place: Place) => void;
   overrides: { key: string }[];
   effects: ReactNode;
@@ -1045,20 +1094,23 @@ function Inspector({
             <button
               key={move}
               className={live.moved === move ? "primary" : ""}
-              onClick={() => {
+              onClick={async () => {
                 if (move === "fell_back" && live.engaged && !live.battle_shocked) {
-                  const mode = window.confirm(
-                    "Ordered Retreat (OK) ou Desperate Escape (Cancelar)?\n\nDesperate Escape: hazard roll por modelo e teste de battle-shock depois.",
-                  )
-                    ? "ordered"
-                    : "desperate";
-                  onPatch({ moved: move }, mode === "desperate" ? "Recuou (Desperate Escape)" : "Recuou (Ordered Retreat)");
+                  const ordered = await askConfirm(
+                    "Ordered Retreat ou Desperate Escape?\n\nConfirmar = Ordered Retreat. Cancelar = escolher Desperate Escape.",
+                    { confirmLabel: "Ordered Retreat", cancelLabel: "Desperate Escape" },
+                  );
+                  const mode = ordered ? "ordered" : "desperate";
+                  onPatch(
+                    { moved: move, fall_back_mode: mode },
+                    mode === "desperate" ? "Recuou (Desperate Escape)" : "Recuou (Ordered Retreat)",
+                  );
                   if (mode === "desperate") {
-                    window.alert("Hazard roll por modelo (1–2 = ferida mortal). Em seguida registre o teste de battle-shock.");
+                    onFlash("Hazard roll por modelo (1–2 = ferida mortal). Em seguida registre o teste de battle-shock.");
                   }
                   return;
                 }
-                onPatch({ moved: move }, label);
+                onPatch({ moved: move, fall_back_mode: null }, label);
               }}
             >
               {label}
@@ -1077,7 +1129,11 @@ function Inspector({
           <button onClick={() => onBattleShock(false)}>Falhou</button>
         </div>
       )}
-      {live.moved === "fell_back" && live.engaged && !live.battle_shocked && phase === "movement" && (
+      {live.moved === "fell_back" &&
+        live.fall_back_mode === "desperate" &&
+        live.engaged &&
+        !live.battle_shocked &&
+        phase === "movement" && (
         <div className="action-grid">
           <button onClick={() => onBattleShock(true)}>Desperate Escape: passou BS</button>
           <button onClick={() => onBattleShock(false)}>Desperate Escape: falhou BS</button>
@@ -1088,6 +1144,11 @@ function Inspector({
           Ignorar restrição nesta fase
         </button>
       )}
+      {live.battle_shocked && phase !== "battle_shock" && (
+        <button className="ghost wide" type="button" onClick={onClearBattleShockAbility}>
+          Remover battle-shock (habilidade)
+        </button>
+      )}
 
       <div className="toggles">
         <Toggle on={live.engaged} label="Engajada" onClick={() => onPatch({ engaged: !live.engaged }, live.engaged ? "fora de combate" : "engajada")} />
@@ -1095,12 +1156,13 @@ function Inspector({
           on={live.on_action}
           label="Em ação"
           title="Unidade fazendo uma Action, como uma missão. Enquanto isso, não atira nem carrega."
-          onClick={() => {
+          onClick={async () => {
             if (!live.on_action) {
               const reasons = canStartAction(live, unit.keywords || [], {
                 oc: unit.oc ?? unit.objective_control,
+                snapShooting: Boolean(live.snap_shooting),
               });
-              if (reasons.length && !window.confirm(`${reasons.join(" · ")}. Registrar ação mesmo assim?`)) return;
+              if (reasons.length && !(await askConfirm(`${reasons.join(" · ")}. Registrar ação mesmo assim?`))) return;
             }
             onPatch({ on_action: !live.on_action }, live.on_action ? "saiu da ação" : "em ação");
           }}
@@ -1608,9 +1670,9 @@ function Stratagems({
     );
     setPicking(null);
   };
-  const openPick = (item: any, used: boolean, short: boolean) => {
-    if (used && !window.confirm("Já usado nesta fase. Usar mesmo assim?")) return;
-    if (short && !window.confirm("CP insuficiente. Registrar mesmo assim?")) return;
+  const openPick = async (item: any, used: boolean, short: boolean) => {
+    if (used && !(await askConfirm("Já usado nesta fase. Usar mesmo assim?"))) return;
+    if (short && !(await askConfirm("CP insuficiente. Registrar mesmo assim?"))) return;
     const preset = selectedUnitId && targets.some((card) => card.unit.id === selectedUnitId) ? selectedUnitId : null;
     setTargetId(preset);
     setPicking({ item, used, short });

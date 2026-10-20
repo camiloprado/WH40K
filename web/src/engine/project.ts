@@ -31,6 +31,9 @@ export type LiveUnit = {
   destroyed: boolean;
   in_reserves: boolean;
   must_ingress: boolean;
+  action_started_moved: Moved | null;
+  snap_shooting: boolean;
+  fall_back_mode: "ordered" | "desperate" | null;
   lane: Lane;
   overrides: { key: string }[];
 };
@@ -213,6 +216,9 @@ function blank(id: number, name: string, round: number, previous?: LiveUnit): Li
     destroyed: previous?.destroyed ?? false,
     in_reserves: previous?.in_reserves ?? false,
     must_ingress: previous?.must_ingress ?? false,
+    action_started_moved: null,
+    snap_shooting: false,
+    fall_back_mode: null,
     lane: previous?.lane ?? "center",
     overrides: [],
   };
@@ -260,6 +266,10 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "phase_advanced") {
+    // BG4: avisos de fase não atravessam a próxima (exceto reservas).
+    state.warnings = state.warnings.filter((item) =>
+      ["reserves_destroyed", "reserves_over_50", "shadow_legacy"].includes(item),
+    );
     let turnedOver = false;
     if (state.phase === "end_of_round") {
       state.round = Math.min(10, state.round + 1);
@@ -310,9 +320,24 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       delete patch.lane;
       state.warnings.push("bad_lane");
     }
+    const wasAction = unit.on_action;
     Object.assign(unit, patch);
-    if (payload.overrides) unit.overrides.push(...payload.overrides);
+    if (payload.overrides) {
+      unit.overrides.push(...payload.overrides);
+      if (payload.overrides.some((item: { key: string }) => item.key === "overwatch")) {
+        unit.snap_shooting = true;
+      }
+    }
     if (unit.in_reserves === false) unit.must_ingress = false;
+    if (!wasAction && unit.on_action) {
+      unit.action_started_moved = unit.moved;
+    }
+    if (wasAction && !unit.on_action) {
+      unit.action_started_moved = null;
+    }
+    if ("moved" in patch && patch.moved !== "fell_back") {
+      unit.fall_back_mode = null;
+    }
     return;
   }
   if (event.type === "effect_chosen") {
@@ -497,13 +522,29 @@ function sameChoice(left: Choice, right: Choice): boolean {
   return left.round === right.round && left.player === right.player;
 }
 
-export function isChoiceActive(choice: Choice, round: number, player: string, phase?: string): boolean {
+function momentKey(round: number, player: string, phase: string, firstPlayer: string): number {
+  const turn = round * 2 + (player === firstPlayer ? 0 : 1);
+  const idx = Math.max(0, PHASES.indexOf(phase as (typeof PHASES)[number]));
+  return turn * 100 + idx;
+}
+
+export function isChoiceActive(
+  choice: Choice,
+  round: number,
+  player: string,
+  phase?: string,
+  firstPlayer: string = "me",
+): boolean {
   if (choice.scope === "battle") return true;
   if (choice.scope === "round") return choice.round === round;
   if (choice.scope === "until_own_command") {
-    if (player !== choice.player || phase !== "command") return true;
-    if (round > choice.round) return false;
-    return choice.phase === "command";
+    // Expira na primeira Command própria depois do evento e permanece expirada (FX1).
+    const choiceIdx = PHASES.indexOf(choice.phase as (typeof PHASES)[number]);
+    const cmdIdx = PHASES.indexOf("command");
+    const expiryRound = choiceIdx < cmdIdx ? choice.round : choice.round + 1;
+    const expiry = momentKey(expiryRound, choice.player, "command", firstPlayer);
+    const now = momentKey(round, player, phase || "command", firstPlayer);
+    return now < expiry;
   }
   return choice.round === round && choice.player === player;
 }
@@ -516,12 +557,13 @@ export function activeChoice(
   round: number,
   player: string,
   phase?: string,
+  firstPlayer: string = "me",
 ): Choice | undefined {
   return choices.find(
     (item) =>
       item.effect_id === effectId &&
       item.list_unit_id === unitId &&
-      isChoiceActive({ ...item, scope }, round, player, phase),
+      isChoiceActive({ ...item, scope }, round, player, phase, firstPlayer),
   );
 }
 
