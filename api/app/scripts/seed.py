@@ -405,9 +405,10 @@ def _seed_tyranid_profiles(db) -> None:
     from app.models import TargetProfile
 
     rows = [
-        ("Termagant", 3, 6, None, 1, None, 1, "bsdata:wh40k-11e@a566745"),
-        ("Hormagaunt", 3, 6, None, 1, None, 1, "bsdata:wh40k-11e@a566745"),
-        ("Tyranid Warrior", 5, 4, 5, 3, None, 1, "bsdata:wh40k-11e@a566745"),
+        ("Termagant", 3, 5, None, 1, None, 10, "bsdata:wh40k-11e@a566745"),
+        ("Hormagaunt", 3, 5, None, 1, None, 10, "bsdata:wh40k-11e@a566745"),
+        ("Tyranid Warrior", 5, 4, None, 3, None, 3, "bsdata:wh40k-11e@a566745"),
+        ("Carnifex", 9, 2, None, 8, None, 1, "bsdata:wh40k-11e@a566745"),
     ]
     for name, t, save, inv, w, fnp, models, ref in rows:
         row = db.scalar(select(TargetProfile).where(TargetProfile.name == name))

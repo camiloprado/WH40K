@@ -281,6 +281,58 @@ describe("elegibilidade", () => {
     expect(nml).toEqual({ include: true, conditional: true });
   });
 
+  it("C14 reservas: R1 inactive; must_ingress com opp primeiro; R2 warn", () => {
+    const r1 = evaluateUnit({
+      phase: "movement",
+      unit: base({ in_reserves: true }),
+      game: { round: 1, firstPlayer: "me" },
+    });
+    expect(r1.status).toBe("inactive");
+    expect(r1.reasons).toContain("Reserva: entra a partir da rodada 2");
+    const r1MustMe = evaluateUnit({
+      phase: "movement",
+      unit: base({ in_reserves: true, must_ingress: true }),
+      game: { round: 1, firstPlayer: "me" },
+    });
+    expect(r1MustMe.status).toBe("inactive");
+    const r1MustOpp = evaluateUnit({
+      phase: "movement",
+      unit: base({ in_reserves: true, must_ingress: true }),
+      game: { round: 1, firstPlayer: "opponent" },
+    });
+    expect(r1MustOpp.status).toBe("warn");
+    expect(r1MustOpp.reasons.some((item) => /ingress/i.test(item))).toBe(true);
+    const r2 = evaluateUnit({
+      phase: "movement",
+      unit: base({ in_reserves: true }),
+      game: { round: 2, firstPlayer: "me" },
+    });
+    expect(r2.status).toBe("warn");
+    expect(r2.reasons.some((item) => item.includes('6"'))).toBe(true);
+  });
+
+  it("AS7 phase any, turn_owner both e below_half", () => {
+    const both = guideMatch({ turn_owner: "both" }, { turn_owner: "own", phase: "shooting" });
+    expect(both.include).toBe(true);
+    const anyPhase = guideMatch({ phase: "any" }, { phase: "shooting" });
+    expect(anyPhase.include).toBe(true);
+    const engaged = base({ engaged: true });
+    const without = evaluateUnit({
+      phase: "shooting",
+      unit: engaged,
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      effects: [{ effect_kind: "allow", restriction_key: "shoot_engaged", condition_json: { "state.below_half": true } }],
+    });
+    expect(without.status).toBe("inactive");
+    const withHalf = evaluateUnit({
+      phase: "shooting",
+      unit: base({ engaged: true, below_half: true }),
+      weapons: [{ name: "Rifle", kind: "ranged" }],
+      effects: [{ effect_kind: "allow", restriction_key: "shoot_engaged", condition_json: { "state.below_half": true } }],
+    });
+    expect(withHalf.status).not.toBe("inactive");
+  });
+
   it("trinta unidades ficam abaixo de 20 ms", () => {
     expect(evaluateMany(30)).toBeLessThan(20);
   });

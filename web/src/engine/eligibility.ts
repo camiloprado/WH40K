@@ -11,6 +11,9 @@ export type UnitSnapshot = {
   battle_shocked: boolean;
   destroyed: boolean;
   in_reserves?: boolean;
+  /** C14 / Realm of Chaos: deve fazer ingress no próximo Movement. */
+  must_ingress?: boolean;
+  below_half?: boolean;
   overrides?: { key: string }[];
 };
 
@@ -53,6 +56,10 @@ export type GameFacts = {
   shadowComplete?: boolean;
   turnOwner?: "own" | "opponent";
   isLeading?: boolean;
+  firstPlayer?: "me" | "opponent";
+  /** Keywords da unidade (Deep Strike / Warp Rifts) para razões de ingress. */
+  hasDeepStrike?: boolean;
+  hasWarpRifts?: boolean;
 };
 
 export function canStartAction(
@@ -113,6 +120,9 @@ export function evaluateUnit(input: {
     (var_setAllows.has(key) || var_setOverrides.has(key)) && !var_setDenies.has(key);
   if (input.unit.destroyed || var_setDenies.has("destroyed")) {
     return { status: "inactive", reasons: ["Destruída"], allowedWeapons: [], destroyed: true };
+  }
+  if (input.unit.in_reserves) {
+    return reservesEligibility(input);
   }
   const var_strActive = input.activePlayer ?? "me";
   const var_setReactive = new Set(["overwatch", "heroic_intervention", "rapid_ingress", "reactive_move"]);
@@ -448,6 +458,51 @@ export function guideMatch(
   return { include: false, conditional: false };
 }
 
+function reservesEligibility(input: {
+  phase: string;
+  unit: UnitSnapshot;
+  unitKeywords?: string[];
+  game?: GameFacts;
+}): Eligibility {
+  const round = input.game?.round ?? 1;
+  const must = Boolean(input.unit.must_ingress);
+  const opponentFirst = input.game?.firstPlayer === "opponent";
+  const earlyOk = must && opponentFirst;
+  if (round <= 1 && !earlyOk) {
+    return {
+      status: "inactive",
+      reasons: ["Reserva: entra a partir da rodada 2"],
+      allowedWeapons: [],
+      destroyed: false,
+    };
+  }
+  const reasons = ingressReasons(input.unitKeywords, input.game, round);
+  if (must) reasons.unshift("Realm of Chaos: deve fazer ingress neste Movement");
+  return { status: "warn", reasons, allowedWeapons: [], destroyed: false };
+}
+
+function ingressReasons(
+  unitKeywords: string[] | undefined,
+  game: GameFacts | undefined,
+  round: number,
+): string[] {
+  const keys = (unitKeywords ?? []).map((item) => item.toUpperCase());
+  const deep = Boolean(game?.hasDeepStrike) || keys.includes("DEEP STRIKE");
+  const warp = Boolean(game?.hasWarpRifts) || keys.includes("WARP RIFTS");
+  const reasons: string[] = [];
+  if (warp) {
+    reasons.push('Ingress Warp Rifts: >6" se inteira no Shadow ou a 6" de Greater Daemon do mesmo deus');
+  } else if (deep) {
+    reasons.push('Ingress Deep Strike: >8" dos inimigos');
+  } else {
+    reasons.push('Ingress: 6" da borda e >8" dos inimigos');
+  }
+  if (round < 3) {
+    reasons.push("R2: não na zona do oponente antes da R3");
+  }
+  return reasons;
+}
+
 function matches(
   node: Record<string, unknown>,
   input: {
@@ -463,13 +518,21 @@ function matches(
   if (Array.isArray(node.any)) return node.any.some((child) => matches(child as Record<string, unknown>, input));
   if (node.not) return !matches(node.not as Record<string, unknown>, input);
   const [var_strKey, var_objExpected] = Object.entries(node)[0];
-  if (var_strKey === "phase") return input.phase === var_objExpected;
-  if (var_strKey.startsWith("state.")) return input.unit[var_strKey.slice(6) as keyof UnitSnapshot] === var_objExpected;
+  if (var_strKey === "phase") {
+    if (var_objExpected === "any") return true;
+    return input.phase === var_objExpected;
+  }
+  if (var_strKey.startsWith("state.")) {
+    return input.unit[var_strKey.slice(6) as keyof UnitSnapshot] === var_objExpected;
+  }
   if (var_strKey === "unit_keyword") return (input.unitKeywords ?? []).includes(String(var_objExpected));
   if (var_strKey === "weapon_keyword") {
     return (input.weapons ?? []).some((item) => (item.keywords ?? []).includes(String(var_objExpected)));
   }
-  if (var_strKey === "turn_owner") return input.game?.turnOwner === var_objExpected;
+  if (var_strKey === "turn_owner") {
+    if (var_objExpected === "both") return true;
+    return input.game?.turnOwner === var_objExpected;
+  }
   if (var_strKey === "is_leading") return Boolean(input.game?.isLeading) === Boolean(var_objExpected);
   if (var_strKey === "game.round") return input.game?.round === var_objExpected;
   if (var_strKey === "game.shadow_of_chaos") {

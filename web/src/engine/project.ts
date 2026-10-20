@@ -30,6 +30,7 @@ export type LiveUnit = {
   below_half: boolean;
   destroyed: boolean;
   in_reserves: boolean;
+  must_ingress: boolean;
   lane: Lane;
   overrides: { key: string }[];
 };
@@ -211,6 +212,7 @@ function blank(id: number, name: string, round: number, previous?: LiveUnit): Li
     below_half: previous?.below_half ?? false,
     destroyed: previous?.destroyed ?? false,
     in_reserves: previous?.in_reserves ?? false,
+    must_ingress: previous?.must_ingress ?? false,
     lane: previous?.lane ?? "center",
     overrides: [],
   };
@@ -229,8 +231,17 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     state.attachments = payload.attachments || [];
     state.eventRules = Boolean(payload.event_rules);
     state.phasesV = Number(payload.phases_v || 1);
+    let reservePts = 0;
+    let totalPts = Number(payload.total_points || payload.points_limit || 0);
     for (const unit of payload.units || []) {
-      state.live[unit.list_unit_id] = blank(unit.list_unit_id, unit.name || "", 1);
+      const live = blank(unit.list_unit_id, unit.name || "", 1);
+      live.in_reserves = Boolean(unit.in_reserves);
+      state.live[unit.list_unit_id] = live;
+      if (live.in_reserves) reservePts += Number(unit.points || 0);
+      if (!totalPts && unit.points) totalPts += Number(unit.points || 0);
+    }
+    if (totalPts > 0 && reservePts * 2 > totalPts) {
+      state.warnings.push("reserves_over_50");
     }
     return;
   }
@@ -301,6 +312,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     }
     Object.assign(unit, patch);
     if (payload.overrides) unit.overrides.push(...payload.overrides);
+    if (unit.in_reserves === false) unit.must_ingress = false;
     return;
   }
   if (event.type === "effect_chosen") {
@@ -395,6 +407,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       if (sameTarget) state.warnings.push("stratagem_same_target");
       const target = state.live[targetId];
       if (target?.battle_shocked) state.warnings.push("stratagem_target_shocked");
+      if (target?.engaged) state.warnings.push("stratagem_target_engaged");
     }
     const spent = Number(payload.cp_spent || 0);
     if (spent && !changeCp(state, player, -spent, Boolean(payload.cp_override))) return;
@@ -408,6 +421,14 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       turn_player: state.player,
       target_list_unit_id: targetId,
     });
+    // Realm of Chaos: alvo volta à reserva e fica must_ingress (C14 / N6).
+    if (targetId != null && /realm of chaos/i.test(String(name))) {
+      const target = state.live[targetId];
+      if (target) {
+        target.in_reserves = true;
+        target.must_ingress = true;
+      }
+    }
     return;
   }
   if (event.type === "objective_set") {

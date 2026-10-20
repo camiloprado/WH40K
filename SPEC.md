@@ -75,7 +75,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF09 | Export da colinha em Markdown. | 2 |
 | RF10 | **Partida:** criar a partir de uma versão (snapshot), com oponente, missão (texto), quem começa e CP inicial. | 3 |
 | RF11 | **Estado por unidade/turno:** movimento (`none/normal/advanced/fell_back/remained`), atirou, carregou, lutou, em ação/missão, Battle-shock, destruída. Um toque marca; desfazer. | 3 |
-| RF12 | **Fases:** partidas novas `phases_v=2`: `round_start` só no 1º turno da rodada; 2º turno → Command; após o 2º `end_of_turn` → `end_of_round` → R+1 `round_start`. **v1** (sem `phases_v`): `round_start` no começo de **cada** turno (os dois da rodada); sem `end_of_round`. Flags de turno zeram a cada troca (C10). Registra `game_turns` (Core 07.01–07.03). | 3 |
+| RF12 | **Fases:** partidas novas `phases_v=2`: `round_start` só no 1º turno da rodada; 2º turno → Command; após o 2º `end_of_turn` → `end_of_round` → R+1 `round_start`. **v1** (sem `phases_v`): `round_start` no começo de **cada** turno (os dois da rodada); sem `end_of_round`. Flags de turno zeram a cada troca (C10). Registra `game_turns` (Core 07.01–07.03). **Reservas:** R1 inactive (salvo `must_ingress` com oponente primeiro); R2+ razões de ingress; aviso `reserves_destroyed` no `end_of_round` da R3+; `reserves_over_50` na criação. | 3 |
 | RF13 | **Gain Core CP:** em toda Command, dos dois jogadores, cada um ganha +1 (Core 08.02). Editável; aviso se repetir. Opcional: teto de 1 CP extra por rodada (Event Companion 1.3). | 3 |
 | RF14 | **Stratagems:** lista da fase atual (outras fases recolhidas); CP sempre do usuário (`me`); 1× por fase + `per_turn`/`per_round`/`per_battle`; folha de alvo com `target_list_unit_id`; avisos mesmo alvo / alvo em battle-shock (Core 15.01, 01.07). Seed dos 10 Core + Daemonic Invulnerability. | 3 |
 | RF15 | **Objetivos:** controle por rodada (meu/oponente/contestado/ninguém); VP primária e secundárias. | 3 |
@@ -84,7 +84,7 @@ O guia de turno passa a ter **estado**. Mapa, checagem de armas e diff vêm depo
 | RF18 | **Motor de elegibilidade** (cliente, offline): ativo/inativo/alerta por unidade e fase, com o motivo. Regras base + exceções de `rule_effects`. | 3 |
 | RF19 | **Lembretes:** Movement destaca quem não moveu; Shooting/Charge acinzentam inelegíveis; Fight lista engajadas/carregaram; End lembra de missões, secundárias e ações. | 3 |
 | RF20 | **Offline-first:** a partida vive no IndexedDB (event log); sync idempotente. | 3 |
-| RF21 | Checagem de armas (cliente, "aproximado"); média por ataque com FNP e teto W **exatos por face**; keywords Sustained/Lethal/Twin-linked/Torrent; multiplica pelo `wargear.count`; teto `models × W`; perfil incompleto → "—"; arredondamento só na UI. Chip opcional se houver mais de um loadout. Reservas: aviso `reserves_destroyed` no `end_of_round` da R3+. | 4 |
+| RF21 | Checagem de armas (cliente, "aproximado"); média por ataque com FNP e teto W **exatos por face**; keywords Sustained/Lethal/Twin-linked/Torrent (Lethal+Sustained = `(h−c)·w+c+c·S·w`); multiplica pelo `wargear.count`; teto `models × W`; perfil incompleto → "—"; arredondamento só na UI. Chip opcional se houver mais de um loadout. | 4 |
 | RF22 | Editor de mapa; PNG (pixelRatio 2) / HTML. | 5 |
 | RF23 | Re-import → nova versão; diff na leitura. | 6 |
 | RF24 | Backup/restore JSON (confirmação, snapshot antes, `setval`). | 0 |

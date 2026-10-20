@@ -17,6 +17,7 @@ con_setPatchFields = {
     "below_half",
     "destroyed",
     "in_reserves",
+    "must_ingress",
     "lane",
 }
 con_setLanes = {"left", "center", "right", "home"}
@@ -112,6 +113,7 @@ def _blank(unit_id: int, name: str, round_no: int, previous: dict | None) -> dic
         "below_half": bool(previous and previous["below_half"]),
         "destroyed": bool(previous and previous["destroyed"]),
         "in_reserves": bool(previous and previous["in_reserves"]),
+        "must_ingress": bool(previous and previous.get("must_ingress")),
         "lane": previous["lane"] if previous else "center",
         "overrides": [],
     }
@@ -167,10 +169,18 @@ def _apply(state: dict, event: dict) -> None:
         state["attachments"] = payload.get("attachments") or []
         state["event_rules"] = bool(payload.get("event_rules"))
         state["phases_v"] = int(payload.get("phases_v") or 1)
+        reserve_pts = 0
+        total_pts = int(payload.get("total_points") or payload.get("points_limit") or 0)
         for unit in payload.get("units") or []:
-            state["live"][int(unit["list_unit_id"])] = _blank(
-                unit["list_unit_id"], unit.get("name") or "", 1, None
-            )
+            live = _blank(unit["list_unit_id"], unit.get("name") or "", 1, None)
+            live["in_reserves"] = bool(unit.get("in_reserves"))
+            state["live"][int(unit["list_unit_id"])] = live
+            if live["in_reserves"]:
+                reserve_pts += int(unit.get("points") or 0)
+            if not total_pts and unit.get("points"):
+                total_pts += int(unit.get("points") or 0)
+        if total_pts > 0 and reserve_pts * 2 > total_pts:
+            state["warnings"].append("reserves_over_50")
         _open_turn(state, event)
         return
     if not state["started"]:
@@ -241,6 +251,8 @@ def _apply(state: dict, event: dict) -> None:
                 unit[key] = value
         if payload.get("overrides"):
             unit["overrides"].extend(payload["overrides"])
+        if unit.get("in_reserves") is False:
+            unit["must_ingress"] = False
         return
     if kind == "cp_changed":
         var_strPlayer = payload.get("player") or state["player"]
@@ -499,6 +511,8 @@ def _stratagem(state: dict, event: dict) -> None:
         unit = state["live"].get(target_id)
         if unit and unit.get("battle_shocked"):
             state["warnings"].append("stratagem_target_shocked")
+        if unit and unit.get("engaged"):
+            state["warnings"].append("stratagem_target_engaged")
     use_id = str(uuid.uuid5(uuid.UUID(event["id"]), "stratagem"))
     spent = int(payload.get("cp_spent") or 0)
     if spent and not _change_cp(
@@ -526,3 +540,8 @@ def _stratagem(state: dict, event: dict) -> None:
             "created_at": event["created_at"],
         }
     )
+    if target_id is not None and "realm of chaos" in str(name).lower():
+        unit = state["live"].get(int(target_id))
+        if unit:
+            unit["in_reserves"] = True
+            unit["must_ingress"] = True

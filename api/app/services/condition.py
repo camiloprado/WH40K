@@ -116,9 +116,15 @@ def matches(node: object, facts: dict) -> bool:
     if var_strKey == "game.round":
         return facts.get("round") == var_objExpected
     if var_strKey == "turn_owner":
+        if var_objExpected == "both":
+            return True
         return facts.get("turn_owner") == var_objExpected
     if var_strKey == "is_leading":
         return bool(facts.get("is_leading")) == bool(var_objExpected)
+    if var_strKey == "phase":
+        if var_objExpected == "any":
+            return True
+        return facts.get("phase") == var_objExpected
     if var_strKey in con_setFactKeys or var_strKey.startswith("state."):
         return facts.get(var_strKey) == var_objExpected
     return False
