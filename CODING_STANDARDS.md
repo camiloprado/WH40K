@@ -31,8 +31,27 @@ let var_strReason = "";
 
 Parâmetros de funções internas podem usar húngara quando o nome não faz parte de um contrato externo.
 
+## Mensagens de commit (PT-BR)
+
+Formato Conventional Commits, assunto em português, sem `Co-Authored-By` nem crédito de AI:
+
+```
+<tipo>: <resumo no imperativo / descritivo curto>
+```
+
+Tipos: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `ci`, `hotfix`, `style`, `perf`.
+
+Exemplos:
+
+- `feat: importar battle size do New Recruit`
+- `fix: soltar unit_states ao apagar lista com partida finalizada`
+- `docs: checklist API e Vite no README`
+- `chore: ignorar regras de agentes no git`
+- `hotfix: corrigir 503 db_not_at_head após migration`
+
 ## Outras regras do projeto
 
 - Sem texto de regra da Games Workshop persistido; hipóteses marcadas.
 - Testes usam o banco `wh40k_test`, nunca `wh40k`.
 - BSData: só hosts GitHub oficiais; cache em `api/data/` (fora do git).
+- Pastas e arquivos de regras de modelos (Cursor, Claude, Codex, etc.) ficam fora do git (ver `.gitignore`).
