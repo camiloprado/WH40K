@@ -1,6 +1,6 @@
 # Code-review — húngara A + melhorias (fixed point `d335fd7`)
 
-Diff: `git diff d335fd7...HEAD` (este documento acompanha o commit da fase).
+Diff: `git diff d335fd7...4c109d4`.
 
 Spec: [SPEC.md](../../SPEC.md). Standards: [CODING_STANDARDS.md](../../CODING_STANDARDS.md) + smell baseline Fowler.
 
