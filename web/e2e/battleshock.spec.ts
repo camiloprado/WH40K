@@ -63,13 +63,19 @@ test("battle-shock persiste até o próximo passo próprio e some ao passar", as
   });
   await page.goto("/games/bs-demo");
   await expect(page.locator('[data-unit="1"]')).toContainText("Daemonettes");
-  for (let step = 0; step < 20; step += 1) {
-    const next = page.getByRole("button", { name: /Próxima fase/i });
-    if (await page.getByRole("heading", { name: /Battle-shock/i }).isVisible().catch(() => false)) {
-      if (await page.getByText(/já em battle-shock/i).isVisible().catch(() => false)) break;
+  for (let step = 0; step < 24; step += 1) {
+    const shock = page.getByRole("heading", { name: /^Battle-shock\s*$/ });
+    if (await shock.isVisible().catch(() => false)) break;
+    const confirm = page.getByRole("button", { name: /Avançar mesmo assim/i });
+    if (await confirm.isVisible().catch(() => false)) {
+      await confirm.click();
+      continue;
     }
+    const next = page.getByRole("button", { name: /Próxima fase/i });
     if (await next.isVisible()) await next.click();
   }
+  await expect(page.getByRole("heading", { name: /^Battle-shock\s*$/ })).toBeVisible();
+  await expect(page.getByText(/Rodada 2/)).toBeVisible();
   await expect(page.getByText(/já em battle-shock/i)).toBeVisible();
   await page.getByRole("button", { name: "Passou" }).first().click();
   await expect(page.getByText(/já em battle-shock/i)).toHaveCount(0);

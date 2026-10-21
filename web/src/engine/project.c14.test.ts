@@ -18,16 +18,30 @@ it("C14 reserves_over_50 e must_ingress via Realm of Chaos", () => {
       {
         first_player: "me",
         phases_v: 2,
-        total_points: 1975,
+        points_limit: 2000,
         units: [
           { list_unit_id: 1, name: "A", in_reserves: true, points: 1000 },
-          { list_unit_id: 2, name: "B", points: 975 },
+          { list_unit_id: 2, name: "B", points: 1000 },
         ],
       },
       "2026-10-15T12:00:00Z",
     ),
   ]);
-  expect(over.warnings).toContain("reserves_over_50");
+  expect(over.warnings).not.toContain("reserves_over_50");
+  const overLimit = applyEvents([
+    ev(
+      1,
+      "game_started",
+      {
+        first_player: "me",
+        phases_v: 2,
+        points_limit: 2000,
+        units: [{ list_unit_id: 1, name: "A", in_reserves: true, points: 1001 }],
+      },
+      "2026-10-15T12:00:00Z",
+    ),
+  ]);
+  expect(overLimit.warnings).toContain("reserves_over_50");
 
   const events = [
     ev(

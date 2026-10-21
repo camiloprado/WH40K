@@ -162,6 +162,7 @@ test("daemonettes que avançou fica cinza no tiro", async ({ page }) => {
   await page.reload();
   await expect(daemonettes).toContainText("Avançou — sem ASSAULT");
 
+  await page.getByRole("region", { name: "Destruídas" }).scrollIntoViewIfNeeded();
   await daemonettes.dragTo(page.getByRole("region", { name: "Destruídas" }), { targetPosition: { x: 40, y: 12 } });
   await expect(page.getByRole("region", { name: "Destruídas" }).locator('[data-unit="1"]')).toBeVisible();
   await expect(page.getByRole("region", { name: "Mesa" }).locator('[data-unit="1"]')).toHaveCount(0);

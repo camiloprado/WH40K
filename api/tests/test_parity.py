@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from app.services.condition import matches
 from app.services.project import apply_events
 
@@ -110,3 +112,30 @@ def test_shadow_phased_projection():
     state = apply_events(events)
     assert state["shadow"][0]["nml_in_shadow"] is True
     assert state["shadow"][0]["opp_dz_in_shadow"] is False
+
+
+@pytest.mark.parametrize(
+    "name",
+    sorted(path.name for path in (ROOT / "fixtures" / "events").glob("*.json") if ".local." not in path.name),
+)
+def test_event_fixtures_glob(name):
+    events, expect = _load_events(name)
+    state = apply_events(events)
+    if "uses" in expect:
+        assert len(state["stratagem_uses"]) == expect["uses"]
+    if "cp_me" in expect:
+        assert state["cp"]["me"] == expect["cp_me"]
+    if "no_warning" in expect:
+        assert expect["no_warning"] not in state["warnings"]
+    if "warning" in expect:
+        assert expect["warning"] in state["warnings"]
+    if "phase" in expect:
+        assert state["phase"] == expect["phase"]
+    if "round" in expect:
+        assert state["round"] == expect["round"]
+    if "player" in expect:
+        assert state["player"] == expect["player"]
+    if "fought" in expect:
+        assert state["live"][1]["fought"] is expect["fought"]
+    if "engaged" in expect:
+        assert state["live"][1]["engaged"] is expect["engaged"]

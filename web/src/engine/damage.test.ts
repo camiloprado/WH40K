@@ -87,18 +87,32 @@ describe("dano esperado", () => {
     expect(expectedDamage({ ...weapon, keywords: ["SUSTAINED HITS D3"] }, target)).toBeCloseTo(1.5, 5);
   });
 
-  it("B1 Lethal condicional só via toggle", () => {
-    const weapon = {
-      name: "Probe",
-      attacks: "3",
-      skill: 3,
-      strength: 4,
-      ap: -1,
-      damage: "1",
-      keywords: ["LETHAL HITS (against INFANTRY)"],
-    };
-    const target = { name: "Alvo", toughness: 4, save: 6, wounds: 1, models: 10 };
-    expect(expectedDamage(weapon, target)).toBeCloseTo(1.0, 5);
-    expect(expectedDamage(weapon, target, { lethal: true })).toBeCloseTo(1.25, 5);
-  });
+it("B1 Lethal com dois-pontos não entra sozinho", () => {
+  const weapon = {
+    name: "Shoota",
+    attacks: "3",
+    skill: 3,
+    strength: 4,
+    ap: -1,
+    damage: "1",
+    keywords: ["LETHAL HITS: non-MONSTER/VEHICLE"],
+  };
+  const target = { name: "Alvo", toughness: 4, save: 6, wounds: 1, models: 10 };
+  expect(expectedDamage(weapon, target)).toBeCloseTo(1.0, 5);
+});
+
+it("B1 Lethal condicional só via toggle", () => {
+  const weapon = {
+    name: "Probe",
+    attacks: "3",
+    skill: 3,
+    strength: 4,
+    ap: -1,
+    damage: "1",
+    keywords: ["LETHAL HITS (against INFANTRY)"],
+  };
+  const target = { name: "Alvo", toughness: 4, save: 6, wounds: 1, models: 10 };
+  expect(expectedDamage(weapon, target)).toBeCloseTo(1.0, 5);
+  expect(expectedDamage(weapon, target, { lethal: true })).toBeCloseTo(1.25, 5);
+});
 });

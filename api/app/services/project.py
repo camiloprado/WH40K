@@ -194,18 +194,17 @@ def _apply(state: dict, event: dict) -> None:
         state["event_rules"] = bool(payload.get("event_rules"))
         state["phases_v"] = int(payload.get("phases_v") or 1)
         reserve_pts = 0
-        total_pts = int(payload.get("total_points") or payload.get("points_limit") or 0)
+        raw_limit = payload.get("points_limit")
+        limit = 0 if raw_limit in (None, "") else int(raw_limit)
         for unit in payload.get("units") or []:
             live = _blank(unit["list_unit_id"], unit.get("name") or "", 1, None)
             live["in_reserves"] = bool(unit.get("in_reserves"))
             live["reserve_listed"] = bool(unit.get("in_reserves"))
             live["points"] = int(unit.get("points") or 0)
             state["live"][int(unit["list_unit_id"])] = live
-            if live["in_reserves"]:
+            if live["reserve_listed"]:
                 reserve_pts += int(unit.get("points") or 0)
-            if not total_pts and unit.get("points"):
-                total_pts += int(unit.get("points") or 0)
-        if total_pts > 0 and reserve_pts * 2 > total_pts:
+        if limit > 0 and reserve_pts * 2 > limit:
             state["warnings"].append("reserves_over_50")
         _open_turn(state, event)
         return
@@ -250,6 +249,11 @@ def _apply(state: dict, event: dict) -> None:
                     if state.get("phases_v", 1) >= 2:
                         state["phase"] = "end_of_round"
                     else:
+                        if state["round"] == 3 and any(
+                            unit.get("in_reserves") and unit.get("reserve_listed") and not unit.get("destroyed")
+                            for unit in state["live"].values()
+                        ) and "reserves_destroyed" not in state["warnings"]:
+                            state["warnings"].append("reserves_destroyed")
                         state["round"] = min(10, state["round"] + 1)
                         state["player"] = state["first_player"]
                         state["phase"] = "round_start"
@@ -264,7 +268,7 @@ def _apply(state: dict, event: dict) -> None:
         if state["phase"] == "fight":
             for unit in state["live"].values():
                 unit["engaged_at_fight_start"] = bool(unit["engaged"])
-        if state["phase"] == "end_of_round" and state["round"] >= 3:
+        if state["phase"] == "end_of_round" and state["round"] == 3:
             if any(
                 unit.get("in_reserves") and unit.get("reserve_listed") and not unit.get("destroyed")
                 for unit in state["live"].values()
@@ -290,6 +294,9 @@ def _apply(state: dict, event: dict) -> None:
                 unit["snap_shooting"] = True
         if unit.get("in_reserves") is False:
             unit["must_ingress"] = False
+            unit["reserve_listed"] = False
+        if unit.get("in_reserves") is True and state["round"] == 1 and state["phase"] in ("round_start", "command"):
+            unit["reserve_listed"] = True
         if not was_action and unit.get("on_action"):
             unit["action_started_moved"] = unit.get("moved")
         if was_action and not unit.get("on_action"):

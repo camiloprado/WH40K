@@ -8,14 +8,14 @@ from app.config import get_settings
 from app.main import create_app
 
 
-def _client(env: str = "test") -> TestClient:
-    os.environ["APP_ENV"] = env
+def _client(monkeypatch, env: str = "test") -> TestClient:
+    monkeypatch.setenv("APP_ENV", env)
     get_settings.cache_clear()
     return TestClient(create_app())
 
 
-def test_rejects_bad_host():
-    client = _client("prod")
+def test_rejects_bad_host(monkeypatch):
+    client = _client(monkeypatch, "prod")
     response = client.post(
         "/api/v1/session",
         json={"token": "x" * 40},
@@ -25,8 +25,8 @@ def test_rejects_bad_host():
     assert response.json()["code"] == "host_not_allowed"
 
 
-def test_requires_json_and_app_header():
-    client = _client()
+def test_requires_json_and_app_header(monkeypatch):
+    client = _client(monkeypatch)
     plain = client.post("/api/v1/session", content="token", headers={"content-type": "text/plain"})
     assert plain.status_code == 415
     assert plain.json()["code"] == "unsupported_media_type"
@@ -35,8 +35,8 @@ def test_requires_json_and_app_header():
     assert missing.json()["code"] == "csrf_header_missing"
 
 
-def test_requires_session_and_hides_docs():
-    client = _client()
+def test_requires_session_and_hides_docs(monkeypatch):
+    client = _client(monkeypatch)
     response = client.get("/api/v1/lists")
     assert response.status_code == 401
     assert response.json()["code"] == "session_required"
@@ -44,8 +44,8 @@ def test_requires_session_and_hides_docs():
     assert client.get("/openapi.json").status_code == 404
 
 
-def test_payload_too_large():
-    client = _client()
+def test_payload_too_large(monkeypatch):
+    client = _client(monkeypatch)
     blob = "😀" * 80000
     response = client.post(
         "/api/v1/session",
@@ -56,10 +56,9 @@ def test_payload_too_large():
     assert response.json()["code"] == "payload_too_large"
 
 
-def test_dev1_cookie_flags_by_env(monkeypatch):
+def test_dev1_cookie_flags_by_env(monkeypatch, tmp_path):
     monkeypatch.setenv("APP_TOKEN_HASH", "a" * 64)
     get_settings.cache_clear()
-    from pathlib import Path
     import hashlib
 
     from app.security import cookie_name, cookie_secure
@@ -73,12 +72,13 @@ def test_dev1_cookie_flags_by_env(monkeypatch):
 
     token = "t" * 40
     digest = hashlib.sha256(token.encode()).hexdigest()
-    Path("data").mkdir(exist_ok=True)
-    Path("data/app_token_hash").write_text(digest, encoding="utf-8")
+    hash_file = tmp_path / "h"
+    hash_file.write_text(digest, encoding="utf-8")
+    monkeypatch.setenv("TOKEN_HASH_FILE", str(hash_file))
     get_settings.cache_clear()
 
     try:
-        client = _client("dev")
+        client = _client(monkeypatch, "dev")
         response = client.post("/api/v1/session", json={"token": token}, headers={"X-App": "wh40k"})
         assert response.status_code == 200
         header = response.headers.get("set-cookie") or ""
@@ -86,7 +86,7 @@ def test_dev1_cookie_flags_by_env(monkeypatch):
         assert "__Host-session" not in header
         assert "Secure" not in header
 
-        client_prod = _client("prod")
+        client_prod = _client(monkeypatch, "prod")
         response_prod = client_prod.post(
             "/api/v1/session",
             json={"token": token},
@@ -97,16 +97,15 @@ def test_dev1_cookie_flags_by_env(monkeypatch):
         assert "__Host-session=" in header_prod
         assert "Secure" in header_prod
     finally:
-        os.environ["APP_ENV"] = "test"
         get_settings.cache_clear()
 
 
-def test_rejects_other_tailnet_host():
+def test_rejects_other_tailnet_host(monkeypatch):
     prev = os.environ.get("EXTRA_HOSTS")
     try:
         os.environ["EXTRA_HOSTS"] = "pc.tailnet.ts.net"
         get_settings.cache_clear()
-        client = _client("prod")
+        client = _client(monkeypatch, "prod")
         response = client.get("/api/v1/health", headers={"Host": "other.tailnet.ts.net"})
         assert response.status_code == 400
         assert response.json()["code"] == "host_not_allowed"
@@ -115,16 +114,15 @@ def test_rejects_other_tailnet_host():
             os.environ.pop("EXTRA_HOSTS", None)
         else:
             os.environ["EXTRA_HOSTS"] = prev
-        os.environ["APP_ENV"] = "test"
         get_settings.cache_clear()
 
 
-def test_accepts_configured_host():
+def test_accepts_configured_host(monkeypatch):
     prev = os.environ.get("EXTRA_HOSTS")
     try:
         os.environ["EXTRA_HOSTS"] = "pc.tailnet.ts.net"
         get_settings.cache_clear()
-        client = _client("prod")
+        client = _client(monkeypatch, "prod")
         response = client.get("/api/v1/health", headers={"Host": "pc.tailnet.ts.net"})
         assert response.status_code == 200
     finally:
@@ -132,7 +130,6 @@ def test_accepts_configured_host():
             os.environ.pop("EXTRA_HOSTS", None)
         else:
             os.environ["EXTRA_HOSTS"] = prev
-        os.environ["APP_ENV"] = "test"
         get_settings.cache_clear()
 
 
@@ -168,7 +165,7 @@ def test_session_absolute_expiry():
         db.close()
 
 
-def test_logout_all():
-    client = _client("test")
+def test_logout_all(monkeypatch):
+    client = _client(monkeypatch, "test")
     response = client.delete("/api/v1/session/all", headers={"X-App": "wh40k", "content-type": "application/json"})
     assert response.status_code == 401

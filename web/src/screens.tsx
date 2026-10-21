@@ -1021,8 +1021,13 @@ export function NewGameScreen() {
   const [mission, setMission] = useState("");
   const [first, setFirst] = useState<"me" | "opponent">("me");
   const [cp, setCp] = useState(0);
+  const [reserveIds, setReserveIds] = useState<number[]>([]);
   const [error, setError] = useState("");
   const navigate = useNavigate();
+  const offline = useLiveQuery(() => bundleFor(Number(vid)), [vid]);
+  const roster = offline?.units || [];
+  const pointsLimit = offline?.version?.points_limit ?? offline?.list?.points_limit ?? null;
+  const reservePts = roster.filter((unit: any) => reserveIds.includes(unit.id)).reduce((sum: number, unit: any) => sum + (unit.points || 0), 0);
 
   async function start() {
     let bundle = await bundleFor(Number(vid));
@@ -1054,12 +1059,12 @@ export function NewGameScreen() {
         cp_me: cp,
         cp_opponent: 0,
         phases_v: 2,
-        points_limit: bundle.version?.points_limit || bundle.list?.points_limit || 2000,
+        points_limit: bundle.version?.points_limit ?? bundle.list?.points_limit ?? null,
         units: (bundle.units || []).map((unit: any) => ({
           list_unit_id: unit.id,
           name: unit.datasheet_name,
           points: unit.points || 0,
-          in_reserves: Boolean(unit.in_reserves),
+          in_reserves: reserveIds.includes(unit.id),
         })),
         attachments: bundle.attachments || [],
       },
@@ -1120,6 +1125,29 @@ export function NewGameScreen() {
           <span className="muted">CP inicial</span>
           <input className="mono narrow" type="number" min={0} max={99} value={cp} onChange={(event) => setCp(Number(event.target.value))} />
         </label>
+        {roster.length > 0 && (
+          <fieldset className="stack">
+            <legend className="muted">Reservas iniciais</legend>
+            {roster.map((unit: any) => (
+              <label key={unit.id} className="row">
+                <input
+                  type="checkbox"
+                  checked={reserveIds.includes(unit.id)}
+                  onChange={(event) =>
+                    setReserveIds((current) =>
+                      event.target.checked ? [...current, unit.id] : current.filter((id) => id !== unit.id),
+                    )
+                  }
+                />
+                {unit.datasheet_name} · {unit.points || 0} pts
+              </label>
+            ))}
+            <p className="muted">
+              Reservas {reservePts} pts
+              {pointsLimit ? ` · limite ${pointsLimit} (50% = ${Math.floor(pointsLimit / 2)})` : " · sem limite de batalha"}
+            </p>
+          </fieldset>
+        )}
         {error && <p className="warn">{error}</p>}
         <button className="primary" type="submit">
           Começar

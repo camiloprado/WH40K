@@ -1,7 +1,8 @@
 import hashlib
-import os
 import uuid
 from pathlib import Path
+
+import pytest
 
 TOKEN = "test-token-value"
 
@@ -14,24 +15,24 @@ ROOT = Path(__file__).resolve().parents[2]
 TEXT = (ROOT / "fixtures" / "text" / "daemons_1975.txt").read_text(encoding="utf-8")
 
 
-def _client() -> TestClient:
-    os.environ["TOKEN_HASH_FILE"] = "data/missing-token-hash"
-    os.environ["APP_TOKEN_HASH"] = hashlib.sha256(TOKEN.encode()).hexdigest()
+@pytest.fixture
+def client(monkeypatch, tmp_path):
+    monkeypatch.setenv("TOKEN_HASH_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("APP_TOKEN_HASH", hashlib.sha256(TOKEN.encode()).hexdigest())
     get_settings.cache_clear()
     import app.db as database
 
     database._engine = None
     database._factory = None
-    client = TestClient(create_app())
-    response = client.post("/api/v1/session", json={"token": TOKEN}, headers={"X-App": "wh40k"})
+    http = TestClient(create_app())
+    response = http.post("/api/v1/session", json={"token": TOKEN}, headers={"X-App": "wh40k"})
     assert response.status_code == 200, response.text
     raw = response.headers["set-cookie"].split(";", 1)[0].split("=", 1)[1]
-    client.headers.update({"X-App": "wh40k", "Cookie": f"session={raw}"})
-    return client
+    http.headers.update({"X-App": "wh40k", "Cookie": f"session={raw}"})
+    return http
 
 
-def test_import_1975_leaders_and_immutable_snapshot():
-    client = _client()
+def test_import_1975_leaders_and_immutable_snapshot(client):
     parsed = client.post("/api/v1/imports/parse", json={"raw_text": TEXT, "format_hint": "nr_text_simple"})
     assert parsed.status_code == 200, parsed.text
     body = parsed.json()
@@ -102,8 +103,7 @@ def test_import_1975_leaders_and_immutable_snapshot():
     assert second.json()["last_seq"] == 1
 
 
-def test_finished_game_does_not_block_deleting_the_list():
-    client = _client()
+def test_finished_game_does_not_block_deleting_the_list(client):
     parsed = client.post("/api/v1/imports/parse", json={"raw_text": TEXT}).json()
     created = client.post(
         "/api/v1/imports",

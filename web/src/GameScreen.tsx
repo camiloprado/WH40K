@@ -743,6 +743,21 @@ export function GameScreen() {
         />
       )}
 
+      {projection.warnings.includes("reserves_destroyed") && (
+        <button
+          className="primary"
+          type="button"
+          onClick={() => {
+            for (const card of cards) {
+              if (card.live.reserve_listed && card.live.in_reserves && !card.live.destroyed) {
+                setUnit(card.unit.id, { destroyed: true, in_reserves: false }, "marcada destruída na reserva");
+              }
+            }
+          }}
+        >
+          Marcar destruída
+        </button>
+      )}
       {toast && (
         <div className="toast" role="status">
           {toast}
@@ -1001,7 +1016,7 @@ function UnitCard({
           </span>
         )}
       </button>
-      {mine && ["shooting", "charge", "fight"].includes(phase) && onTable && (
+      {(mine || phase === "fight") && ["shooting", "charge", "fight"].includes(phase) && onTable && (
         <button
           type="button"
           className="primary card-action"
@@ -1073,6 +1088,7 @@ function Inspector({
   const primaryLabel = phase === "shooting" ? (live.shot ? "Desmarcar tiro" : "Atirou") : phase === "charge" ? (live.charged ? "Desmarcar carga" : "Carregou") : phase === "fight" ? (live.fought ? "Desmarcar luta" : "Lutou") : null;
   return (
     <section className="panel inspector inspector-sheet" aria-label="Unidade selecionada">
+      <div className="sheet-handle" aria-hidden />
       <div className="panel-head">
         <h2>{unit.datasheet_name}</h2>
         <button className="ghost close" onClick={onClose} aria-label="Fechar">
@@ -1728,7 +1744,9 @@ function Stratagems({
             <button className={targetId == null ? "primary" : ""} onClick={() => setTargetId(null)}>
               Sem alvo
             </button>
-            {targets.map((card) => (
+            {targets.map((card) => {
+              const engaged = stratagemCheck(projection, picking.item, card.unit.id).engaged;
+              return (
               <button
                 key={card.unit.id}
                 className={targetId === card.unit.id ? "primary" : ""}
@@ -1736,8 +1754,10 @@ function Stratagems({
               >
                 {card.unit.datasheet_name}
                 {card.live.battle_shocked ? " · BS" : ""}
+                {engaged ? " · ⚠ Engajada · confira o texto" : ""}
               </button>
-            ))}
+              );
+            })}
           </div>
           <div className="action-grid" style={{ marginTop: 12 }}>
             <button className="ghost" onClick={() => setPicking(null)}>

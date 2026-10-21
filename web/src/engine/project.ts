@@ -309,17 +309,16 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     state.eventRules = Boolean(payload.event_rules);
     state.phasesV = Number(payload.phases_v || 1);
     let reservePts = 0;
-    let totalPts = Number(payload.total_points || payload.points_limit || 0);
+    const limit = payload.points_limit == null || payload.points_limit === "" ? 0 : Number(payload.points_limit);
     for (const unit of payload.units || []) {
       const live = blank(unit.list_unit_id, unit.name || "", 1);
       live.in_reserves = Boolean(unit.in_reserves);
       live.reserve_listed = Boolean(unit.in_reserves);
       live.points = Number(unit.points || 0);
       state.live[unit.list_unit_id] = live;
-      if (live.in_reserves) reservePts += Number(unit.points || 0);
-      if (!totalPts && unit.points) totalPts += Number(unit.points || 0);
+      if (live.reserve_listed) reservePts += Number(unit.points || 0);
     }
-    if (totalPts > 0 && reservePts * 2 > totalPts) {
+    if (limit > 0 && reservePts * 2 > limit) {
       state.warnings.push("reserves_over_50");
     }
     return;
@@ -357,6 +356,12 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
         if (state.phasesV >= 2) {
           state.phase = "end_of_round";
         } else {
+          if (state.round === 3) {
+            const stuck = Object.values(state.live).some(
+              (unit) => unit.in_reserves && !unit.destroyed && unit.reserve_listed,
+            );
+            if (stuck && !state.warnings.includes("reserves_destroyed")) state.warnings.push("reserves_destroyed");
+          }
           state.round = Math.min(10, state.round + 1);
           state.player = state.firstPlayer;
           state.phase = "round_start";
@@ -379,7 +384,7 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
         unit.engaged_at_fight_start = unit.engaged;
       }
     }
-    if (state.phase === "end_of_round" && state.round >= 3) {
+    if (state.phase === "end_of_round" && state.round === 3) {
       const stuck = Object.values(state.live).some((unit) => unit.in_reserves && !unit.destroyed && unit.reserve_listed);
       if (stuck && !state.warnings.includes("reserves_destroyed")) state.warnings.push("reserves_destroyed");
     }
@@ -404,7 +409,17 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
         unit.snap_shooting = true;
       }
     }
-    if (unit.in_reserves === false) unit.must_ingress = false;
+    if (unit.in_reserves === false) {
+      unit.must_ingress = false;
+      unit.reserve_listed = false;
+    }
+    if (
+      unit.in_reserves === true &&
+      state.round === 1 &&
+      (state.phase === "round_start" || state.phase === "command")
+    ) {
+      unit.reserve_listed = true;
+    }
     if (!wasAction && unit.on_action) {
       unit.action_started_moved = unit.moved;
     }

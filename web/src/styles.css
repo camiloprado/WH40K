@@ -319,8 +319,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
 .menu-title { margin: 4px 8px 6px; font-size: 12px; color: var(--muted); }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; background: #232833; border: 1px solid #3a4150; padding: 6px 6px 6px 14px; border-radius: 10px; z-index: 46; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
 .sheet-confirm { position: fixed; left: 12px; right: 12px; bottom: 20px; z-index: 55; background: #1a1e28; border: 1px solid var(--line); padding: 16px; border-radius: 8px; max-height: 70vh; overflow: auto; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); }
-.inspector-sheet { position: fixed; left: 0; right: 0; bottom: 76px; z-index: 35; max-height: 55vh; overflow: auto; border-radius: 12px 12px 0 0; border: 1px solid var(--line); border-bottom: 0; background: #0d1015; padding: 8px 10px 12px; }
-.inspector-sheet .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: #3a4150; margin: 4px auto 10px; }
+.sheet-handle { display: none; }
 
 @media (max-width: 1200px) {
   .table-app { grid-template-columns: 132px minmax(0, 1fr) 290px; }
@@ -360,7 +359,10 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
   }
   .phase-rail .phase-menu[open] .phase-step { display: block; width: 100%; text-align: left; }
-  .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; flex: 0 1 auto; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
+  .phase-rail .pending-chip { min-height: 48px; max-width: 7.5rem; overflow: hidden; text-overflow: ellipsis; }
+  .inspector-sheet { position: fixed; left: 0; right: 0; bottom: 76px; z-index: 35; max-height: 60dvh; overflow: auto; border-radius: 12px 12px 0 0; border: 1px solid var(--line); border-bottom: 0; background: #0d1015; padding: 8px 10px 12px; }
+  .inspector-sheet .sheet-handle { display: block; width: 40px; height: 4px; border-radius: 2px; background: #3a4150; margin: 4px auto 10px; }
+  .table-app:has(.inspector-sheet) .toast { top: 12px; bottom: auto; }
   .sheet-confirm { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   .turn-tag { display: none; }
   .phase-step { flex: none; font-size: 12px; padding: 0 8px; }
