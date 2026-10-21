@@ -141,7 +141,14 @@ export function applyEvents(events: GameEvent[]): Projection {
   const var_objState = empty();
   for (const var_objEvent of var_lstOrdered) {
     const var_boolSkipped = var_setInactive.has(var_objEvent.id) || var_objEvent.type === "undo";
-    if (!var_boolSkipped) apply(var_objState, var_objEvent);
+    if (!var_boolSkipped) {
+      try {
+        if (!var_objEvent.payload || typeof var_objEvent.payload !== "object") throw new Error("payload");
+        apply(var_objState, var_objEvent);
+      } catch {
+        var_objState.warnings.push(`bad_event:${var_objEvent.id}`);
+      }
+    }
     var_objState.log.push({
       id: var_objEvent.id,
       seq: var_objEvent.seq,
@@ -157,18 +164,21 @@ export function applyEvents(events: GameEvent[]): Projection {
 }
 
 function undone(events: GameEvent[]): Set<string> {
-  let inactive = new Set<string>();
-  for (;;) {
-    const found = new Set<string>();
-    for (const event of events) {
-      if (event.type === "undo" && !inactive.has(event.id)) {
-        const target = event.undoes_event_id || event.payload.undoes_event_id;
-        if (target) found.add(target);
-      }
+  const index = new Map(events.map((event, i) => [event.id, i]));
+  const inactive = new Set<string>();
+  events.forEach((event, i) => {
+    if (event.type !== "undo" || inactive.has(event.id)) return;
+    const target = event.undoes_event_id || null;
+    if (!target || target === event.id) return;
+    const at = index.get(target);
+    if (at == null || at >= i) return;
+    inactive.add(target);
+    const undoneEvent = events[at];
+    if (undoneEvent.type === "undo" && undoneEvent.undoes_event_id) {
+      inactive.delete(undoneEvent.undoes_event_id);
     }
-    if (found.size === inactive.size && [...found].every((id) => inactive.has(id))) return inactive;
-    inactive = found;
-  }
+  });
+  return inactive;
 }
 
 function empty(): Projection & { started: boolean } {
@@ -313,6 +323,9 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "unit_state_set") {
+    if (payload.list_unit_id == null || Number.isNaN(Number(payload.list_unit_id))) {
+      throw new Error("list_unit_id");
+    }
     const unit = state.live[Number(payload.list_unit_id)];
     if (!unit) return;
     const patch = { ...(payload.patch || {}) };

@@ -18,6 +18,7 @@ function normalize(events: Record<string, unknown>[]): GameEvent[] {
     device_id: String(item.device_id || "fixture"),
     type: String(item.type),
     payload: (item.payload || {}) as Record<string, unknown>,
+    undoes_event_id: (item.undoes_event_id as string) || null,
     created_at: String(item.created_at || "2026-10-15T12:00:00Z"),
   }));
 }
@@ -27,7 +28,9 @@ describe("Q4 fixtures/events no Vitest", () => {
   for (const name of files) {
     it(name, () => {
       const raw = readJson(join(root, name));
+      const started = performance.now();
       const state = applyEvents(normalize(raw.events || raw));
+      if (name === "undo_cycle.json") expect(performance.now() - started).toBeLessThan(50);
       expect(state.round).toBeGreaterThanOrEqual(1);
       const exp = raw.expect;
       if (!exp) return;
@@ -38,6 +41,8 @@ describe("Q4 fixtures/events no Vitest", () => {
       if (exp.phase) expect(state.phase).toBe(exp.phase);
       if (exp.round) expect(state.round).toBe(exp.round);
       if (exp.player) expect(state.player).toBe(exp.player);
+      if (exp.fought != null) expect(state.live[1].fought).toBe(exp.fought);
+      if (exp.engaged != null) expect(state.live[1].engaged).toBe(exp.engaged);
     });
   }
 });

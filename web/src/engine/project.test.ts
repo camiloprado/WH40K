@@ -86,8 +86,10 @@ it("Gain Core CP e event_rules por partida", () => {
   expect(extras.warnings).toContain("extra_cp_cap");
 });
 
-it("segundo turno da rodada entra em command sem round_start", () => {
-  const events = [ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z")];
+it("C17 v2: segundo turno da rodada entra em command sem round_start", () => {
+  const events = [
+    ev(1, "game_started", { first_player: "me", phases_v: 2, units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+  ];
   let seq = 2;
   let state = applyEvents(events);
   while (!(state.player === "me" && state.phase === "end_of_turn") && seq < 20) {
@@ -166,20 +168,62 @@ it("C17 phases_v2: end_of_round antes da R2", () => {
   expect(state.player).toBe("me");
 });
 
-it("C17 phases_v1: sem end_of_round (byte-compat)", () => {
+it("C17 phases_v1: round_start no 2º turno e sem end_of_round", () => {
   const events = [ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z")];
-  let seq = 2;
-  let state = applyEvents(events);
-  while (!(state.player === "opponent" && state.phase === "end_of_turn") && seq < 40) {
+  for (let seq = 2; seq <= 9; seq += 1) {
     events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
-    seq += 1;
-    state = applyEvents(events);
   }
-  events.push(ev(seq, "phase_advanced", {}, "2026-10-15T12:01:00Z"));
+  let state = applyEvents(events);
+  expect(state.player).toBe("opponent");
+  expect(state.phase).toBe("round_start");
+  expect(state.round).toBe(1);
+  for (let seq = 10; seq <= 17; seq += 1) {
+    events.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:01:${String(seq).padStart(2, "0")}Z`));
+  }
   state = applyEvents(events);
+  expect(state.player).toBe("me");
   expect(state.phase).toBe("round_start");
   expect(state.round).toBe(2);
   expect(state.phasesV).toBe(1);
+});
+
+it("C12 per_phase conta turn_player; same_target e shocked", () => {
+  const base = [
+    ev(1, "game_started", { first_player: "me", phases_v: 2, cp_me: 3, units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+  ];
+  let seq = 2;
+  let state = applyEvents(base);
+  while (!(state.player === "me" && state.phase === "shooting") && seq < 40) {
+    base.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:00:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(base);
+  }
+  base.push(
+    ev(seq, "stratagem_used", { stratagem_name: "Command Re-roll", cp_spent: 1, use_limit: "per_phase", player: "me" }, "2026-10-15T12:01:00Z"),
+  );
+  seq += 1;
+  state = applyEvents(base);
+  while (!(state.player === "opponent" && state.phase === "shooting") && seq < 80) {
+    base.push(ev(seq, "phase_advanced", {}, `2026-10-15T12:02:${String(seq).padStart(2, "0")}Z`));
+    seq += 1;
+    state = applyEvents(base);
+  }
+  base.push(
+    ev(seq, "stratagem_used", { stratagem_name: "Command Re-roll", cp_spent: 1, use_limit: "per_phase", player: "me" }, "2026-10-15T12:03:00Z"),
+  );
+  state = applyEvents(base);
+  expect(state.warnings).not.toContain("stratagem_limit");
+  expect(state.stratagem_uses).toHaveLength(2);
+  expect(state.cp.me).toBe(1);
+
+  const shocked = applyEvents([
+    ev(1, "game_started", { first_player: "me", units: [{ list_unit_id: 1, name: "X" }] }, "2026-10-15T12:00:00Z"),
+    ev(2, "battleshock_result", { list_unit_id: 1, passed: false }, "2026-10-15T12:00:01Z"),
+    ev(3, "stratagem_used", { stratagem_name: "A", cp_spent: 0, player: "me", target_list_unit_id: 1 }, "2026-10-15T12:00:02Z"),
+    ev(4, "stratagem_used", { stratagem_name: "B", cp_spent: 0, player: "me", target_list_unit_id: 1 }, "2026-10-15T12:00:03Z"),
+  ]);
+  expect(shocked.warnings).toContain("stratagem_same_target");
+  expect(shocked.warnings).toContain("stratagem_target_shocked");
 });
 
 it("C10 zera fought ao trocar para o turno do oponente", () => {

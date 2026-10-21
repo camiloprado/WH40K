@@ -47,6 +47,7 @@ def _load_events(name: str) -> tuple[list[dict], dict]:
             "device_id": "parity",
             "type": item["type"],
             "payload": item["payload"],
+            "undoes_event_id": item.get("undoes_event_id"),
             "created_at": item["created_at"],
         }
         for item in fixture["events"]

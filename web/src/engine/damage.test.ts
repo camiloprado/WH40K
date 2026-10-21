@@ -64,6 +64,9 @@ describe("dano esperado", () => {
     expect(expectedDamage({ ...baseWeapon, damage: "X" }, baseTarget)).toBeNull();
     expect(expectedDamage({ ...baseWeapon, strength: null }, baseTarget)).toBeNull();
     expect(expectedDamage({ ...baseWeapon, skill: null }, baseTarget)).toBeNull();
+    expect(
+      expectedDamage({ ...baseWeapon, skill: null, keywords: ["TORRENT"] }, baseTarget),
+    ).not.toBeNull();
   });
 
   it("acerto limitado a 5/6", () => {

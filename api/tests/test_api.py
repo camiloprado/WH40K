@@ -3,9 +3,7 @@ import os
 import uuid
 from pathlib import Path
 
-os.environ["TOKEN_HASH_FILE"] = "data/missing-token-hash"
 TOKEN = "test-token-value"
-os.environ["APP_TOKEN_HASH"] = hashlib.sha256(TOKEN.encode()).hexdigest()
 
 from fastapi.testclient import TestClient
 
@@ -17,6 +15,8 @@ TEXT = (ROOT / "fixtures" / "text" / "daemons_1975.txt").read_text(encoding="utf
 
 
 def _client() -> TestClient:
+    os.environ["TOKEN_HASH_FILE"] = "data/missing-token-hash"
+    os.environ["APP_TOKEN_HASH"] = hashlib.sha256(TOKEN.encode()).hexdigest()
     get_settings.cache_clear()
     import app.db as database
 

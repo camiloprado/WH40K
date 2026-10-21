@@ -19,6 +19,7 @@ web/dev-dist/
 web/test-results/
 web/playwright-report/
 web/.e2e-token
+web/e2e/.auth.json
 # Scratch local de testes (não sobe; cópias sujas do Camilo)
 api/tests/test_guide_r1.py
 api/tests/test_project.local.py

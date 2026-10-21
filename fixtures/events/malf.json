@@ -1,0 +1,8 @@
+{
+  "name": "malf",
+  "events": [
+    {"id": "00000000-0000-4000-8000-000000000001", "seq": 1, "type": "game_started", "payload": {"first_player": "me", "units": [{"list_unit_id": 1, "name": "X"}]}, "created_at": "2026-10-15T12:00:00Z"},
+    {"id": "00000000-0000-4000-8000-000000000002", "seq": 2, "type": "unit_state_set", "payload": {}, "created_at": "2026-10-15T12:00:01Z"}
+  ],
+  "expect": {"warning": "bad_event:00000000-0000-4000-8000-000000000002", "phase": "round_start"}
+}

@@ -251,8 +251,32 @@ def test_c12_per_turn_across_turns():
     assert state["cp"]["me"] == 1
 
 
-def test_second_turn_skips_round_start():
+def test_c17_v1_second_turn_has_round_start():
+    """v1: 8 avanços → R1 opponent round_start; 16 → R2 me round_start (C17)."""
     events = [started()]
+    for seq in range(2, 10):
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+    state = apply_events(events)
+    assert state["player"] == "opponent"
+    assert state["phase"] == "round_start"
+    assert state["round"] == 1
+    for seq in range(10, 18):
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:01:{seq:02d}Z"))
+    state = apply_events(events)
+    assert state["player"] == "me"
+    assert state["phase"] == "round_start"
+    assert state["round"] == 2
+
+
+def test_c17_v2_second_turn_skips_to_command():
+    events = [
+        ev(
+            1,
+            "game_started",
+            {**started()["payload"], "phases_v": 2},
+            "2026-10-15T12:00:00Z",
+        )
+    ]
     seq = 2
     state = apply_events(events)
     while not (state["player"] == "me" and state["phase"] == "end_of_turn") and seq < 20:
@@ -264,6 +288,71 @@ def test_second_turn_skips_round_start():
     assert state["player"] == "opponent"
     assert state["phase"] == "command"
     assert state["round"] == 1
+
+
+def test_c12_per_phase_allows_other_turn_same_phase_name():
+    events = [
+        ev(
+            1,
+            "game_started",
+            {**started()["payload"], "phases_v": 2, "cp_me": 3},
+            "2026-10-15T12:00:00Z",
+        )
+    ]
+    seq = 2
+    state = apply_events(events)
+    while not (state["player"] == "me" and state["phase"] == "shooting") and seq < 40:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:00:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    events.append(
+        ev(
+            seq,
+            "stratagem_used",
+            {"stratagem_name": "Command Re-roll", "cp_spent": 1, "use_limit": "per_phase", "player": "me"},
+            "2026-10-15T12:01:00Z",
+        )
+    )
+    seq += 1
+    state = apply_events(events)
+    while not (state["player"] == "opponent" and state["phase"] == "shooting") and seq < 80:
+        events.append(ev(seq, "phase_advanced", {}, f"2026-10-15T12:02:{seq:02d}Z"))
+        seq += 1
+        state = apply_events(events)
+    events.append(
+        ev(
+            seq,
+            "stratagem_used",
+            {"stratagem_name": "Command Re-roll", "cp_spent": 1, "use_limit": "per_phase", "player": "me"},
+            "2026-10-15T12:03:00Z",
+        )
+    )
+    state = apply_events(events)
+    assert "stratagem_limit" not in state["warnings"]
+    assert len(state["stratagem_uses"]) == 2
+    assert state["cp"]["me"] == 1
+
+
+def test_c12_same_target_and_shocked():
+    events = [
+        started(),
+        ev(2, "battleshock_result", {"list_unit_id": 1, "passed": False}, "2026-10-15T12:00:01Z"),
+        ev(
+            3,
+            "stratagem_used",
+            {"stratagem_name": "A", "cp_spent": 0, "player": "me", "target_list_unit_id": 1},
+            "2026-10-15T12:00:02Z",
+        ),
+        ev(
+            4,
+            "stratagem_used",
+            {"stratagem_name": "B", "cp_spent": 0, "player": "me", "target_list_unit_id": 1},
+            "2026-10-15T12:00:03Z",
+        ),
+    ]
+    state = apply_events(events)
+    assert "stratagem_same_target" in state["warnings"]
+    assert "stratagem_target_shocked" in state["warnings"]
 
 
 def test_engaged_at_fight_start_on_entering_fight():
@@ -305,7 +394,7 @@ def test_lane_survives_new_turn():
     assert state["round"] == 2
     assert state["live"][1]["lane"] == "left"
     assert state["live"][2]["lane"] == "home"
-    assert "bad_lane" in state["warnings"]
+    assert "bad_lane" not in state["warnings"]
 
 
 def test_effect_choice_replaces_within_turn():

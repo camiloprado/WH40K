@@ -136,10 +136,12 @@ export function expectedDamage(
 ): number | null {
   const var_lstAttacks = damageFaces(weapon.attacks);
   const var_lstDamage = damageFaces(weapon.damage);
-  if (!var_lstAttacks || !var_lstDamage || weapon.strength == null || weapon.skill == null) return null;
   const flags = keywordFlags(weapon, toggles);
+  // M2: sem skill só Torrent (auto-hit) tem número; o resto devolve null.
+  if (!var_lstAttacks || !var_lstDamage || weapon.strength == null) return null;
+  if (weapon.skill == null && !flags.torrent) return null;
   const var_fltAttacks = var_lstAttacks.reduce((sum, [d, p]) => sum + d * p, 0);
-  const var_intSkill = weapon.skill;
+  const var_intSkill = weapon.skill ?? 7;
   let var_fltHit = flags.torrent ? 1 : Math.min(5 / 6, Math.max(0, (7 - var_intSkill) / 6));
   let var_fltWound = woundChance(weapon.strength, target.toughness);
   if (flags.twinLinked) {

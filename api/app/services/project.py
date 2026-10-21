@@ -44,23 +44,34 @@ def apply_events(events: list[dict]) -> dict:
         var_dctSeen.setdefault(var_dctEvent["seq"], var_dctEvent["device_id"])
         if var_dctEvent["id"] in var_setInactive or var_dctEvent["type"] == "undo":
             continue
-        _apply(var_dctState, var_dctEvent)
-        _snapshot(var_dctState)
+        try:
+            if not isinstance(var_dctEvent.get("payload"), dict):
+                raise ValueError("payload")
+            _apply(var_dctState, var_dctEvent)
+            _snapshot(var_dctState)
+        except Exception:
+            var_dctState["warnings"].append(f"bad_event:{var_dctEvent['id']}")
     return var_dctState
 
 
 def _inactive(events: list[dict]) -> set[str]:
+    index = {event["id"]: i for i, event in enumerate(events)}
     inactive: set[str] = set()
-    while True:
-        found: set[str] = set()
-        for event in events:
-            if event["type"] == "undo" and event["id"] not in inactive:
-                target = event.get("undoes_event_id") or event["payload"].get("undoes_event_id")
-                if target:
-                    found.add(target)
-        if found == inactive:
-            return inactive
-        inactive = found
+    for i, event in enumerate(events):
+        if event["type"] != "undo" or event["id"] in inactive:
+            continue
+        target = event.get("undoes_event_id")
+        if not target or target == event["id"]:
+            continue
+        at = index.get(target)
+        if at is None or at >= i:
+            continue
+        inactive.add(target)
+        undone = events[at]
+        inner = undone.get("undoes_event_id") if undone.get("type") == "undo" else None
+        if inner:
+            inactive.discard(inner)
+    return inactive
 
 
 def _empty() -> dict:

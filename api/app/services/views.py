@@ -491,7 +491,16 @@ def sync_events(db: Session, game_id: uuid.UUID, events: list[dict]) -> dict:
         err(404, "not_found", "Partida não encontrada")
     accepted, duplicates, rejected = [], [], []
     for item in events:
-        payload = item["payload"]
+        payload = item.get("payload")
+        if not isinstance(payload, dict):
+            rejected.append({"id": item["id"], "reason": "bad_event"})
+            continue
+        if item.get("type") == "undo":
+            top = item.get("undoes_event_id")
+            nested = payload.get("undoes_event_id")
+            if not top or str(top) == str(item["id"]) or (nested and str(nested) != str(top)):
+                rejected.append({"id": item["id"], "reason": "undoes_event_id_invalid"})
+                continue
         encoded = json.dumps(payload)
         if len(encoded.encode()) > 8192:
             err(413, "payload_too_large", "Evento grande demais")

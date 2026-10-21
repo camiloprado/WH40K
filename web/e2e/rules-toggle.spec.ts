@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 test("recarregar mantém o toggle de regras de evento", async ({ page }) => {
   await page.addInitScript(() => {
@@ -68,19 +69,21 @@ test("recarregar mantém o toggle de regras de evento", async ({ page }) => {
   const toggle = page.getByRole("checkbox", { name: /regras de evento/i });
   await expect(toggle).toBeVisible();
   await expect(toggle).not.toBeChecked();
-  await toggle.check();
+  await toggle.click();
   await expect(toggle).toBeChecked();
   await page.reload();
   await expect(page.getByRole("checkbox", { name: /regras de evento/i })).toBeChecked();
 });
 
 test("login por cookie no proxy (DEV1/SEC-N5)", async ({ page }) => {
+  const here = dirname(fileURLToPath(import.meta.url));
   let token = process.env.E2E_TOKEN || "";
   try {
-    token = readFileSync(resolve(__dirname, "../.e2e-token"), "utf8").trim() || token;
+    token = readFileSync(resolve(here, "../.e2e-token"), "utf8").trim() || token;
   } catch {
-    /* opcional fora do CI */
+    token = token;
   }
+  if (!token && process.env.CI) throw new Error("CI sem token e2e");
   test.skip(!token, "sem token e2e (API local)");
   await page.goto("/login");
   await page.getByLabel("Token").fill(token);
