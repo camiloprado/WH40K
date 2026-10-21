@@ -32,6 +32,11 @@ LANES = con_setLanes
 CHOICE_SCOPES = con_setChoiceScopes
 
 
+def _needs_unengaged(name: str) -> bool:
+    text = str(name or "").lower()
+    return any(token in text for token in ("realm of chaos", "fire overwatch", "heroic intervention", "explosive"))
+
+
 def apply_events(events: list[dict]) -> dict:
     var_lstOrdered = sorted(events, key=lambda item: (item["created_at"], item["device_id"], item["seq"]))
     var_setInactive = _inactive(var_lstOrdered)
@@ -127,6 +132,8 @@ def _blank(unit_id: int, name: str, round_no: int, previous: dict | None) -> dic
         "below_half": bool(previous and previous["below_half"]),
         "destroyed": bool(previous and previous["destroyed"]),
         "in_reserves": bool(previous and previous["in_reserves"]),
+        "reserve_listed": bool(previous and previous.get("reserve_listed")),
+        "points": int(previous.get("points") or 0) if previous else 0,
         "must_ingress": bool(previous and previous.get("must_ingress")),
         "action_started_moved": None,
         "snap_shooting": False,
@@ -191,6 +198,8 @@ def _apply(state: dict, event: dict) -> None:
         for unit in payload.get("units") or []:
             live = _blank(unit["list_unit_id"], unit.get("name") or "", 1, None)
             live["in_reserves"] = bool(unit.get("in_reserves"))
+            live["reserve_listed"] = bool(unit.get("in_reserves"))
+            live["points"] = int(unit.get("points") or 0)
             state["live"][int(unit["list_unit_id"])] = live
             if live["in_reserves"]:
                 reserve_pts += int(unit.get("points") or 0)
@@ -256,7 +265,10 @@ def _apply(state: dict, event: dict) -> None:
             for unit in state["live"].values():
                 unit["engaged_at_fight_start"] = bool(unit["engaged"])
         if state["phase"] == "end_of_round" and state["round"] >= 3:
-            if any(unit.get("in_reserves") and not unit.get("destroyed") for unit in state["live"].values()):
+            if any(
+                unit.get("in_reserves") and unit.get("reserve_listed") and not unit.get("destroyed")
+                for unit in state["live"].values()
+            ) and "reserves_destroyed" not in state["warnings"]:
                 state["warnings"].append("reserves_destroyed")
         _open_turn(state, event)
         return
@@ -540,9 +552,9 @@ def _stratagem(state: dict, event: dict) -> None:
         ):
             state["warnings"].append("stratagem_same_target")
         unit = state["live"].get(target_id)
-        if unit and unit.get("battle_shocked"):
+        if unit and unit.get("battle_shocked") and player == "me":
             state["warnings"].append("stratagem_target_shocked")
-        if unit and unit.get("engaged"):
+        if unit and unit.get("engaged") and _needs_unengaged(name):
             state["warnings"].append("stratagem_target_engaged")
     use_id = str(uuid.uuid5(uuid.UUID(event["id"]), "stratagem"))
     spent = int(payload.get("cp_spent") or 0)

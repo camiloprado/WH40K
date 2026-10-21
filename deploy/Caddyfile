@@ -6,9 +6,6 @@
 # Nunca usar `tailscale funnel`. Certificado *.ts.net fica com o Tailscale (sem tls internal).
 :80 {
 	encode gzip
-	request_body {
-		max_size 200KB
-	}
 	header {
 		Content-Security-Policy "default-src 'self'; frame-ancestors 'none'"
 		X-Content-Type-Options "nosniff"
@@ -24,9 +21,15 @@
 		reverse_proxy api:8000
 	}
 	handle /api/* {
+		request_body {
+			max_size 200KB
+		}
 		reverse_proxy api:8000
 	}
 	handle {
+		request_body {
+			max_size 200KB
+		}
 		root * /srv/web
 		try_files {path} /index.html
 		file_server

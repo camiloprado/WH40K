@@ -1054,7 +1054,13 @@ export function NewGameScreen() {
         cp_me: cp,
         cp_opponent: 0,
         phases_v: 2,
-        units: (bundle.units || []).map((unit: any) => ({ list_unit_id: unit.id, name: unit.datasheet_name })),
+        points_limit: bundle.version?.points_limit || bundle.list?.points_limit || 2000,
+        units: (bundle.units || []).map((unit: any) => ({
+          list_unit_id: unit.id,
+          name: unit.datasheet_name,
+          points: unit.points || 0,
+          in_reserves: Boolean(unit.in_reserves),
+        })),
         attachments: bundle.attachments || [],
       },
     };

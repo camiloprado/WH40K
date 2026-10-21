@@ -114,7 +114,9 @@ function keywordFlags(weapon: WeaponProfile, toggles?: DamageToggles) {
   // Lethal condicional ("contra X") só entra via toggle até existir alvo com keywords (B1).
   const lethalRaw = keys.some((item) => item.includes("LETHAL"));
   const lethalConditional = keys.some(
-    (item) => item.includes("LETHAL") && (item.includes("(") || /\b(AGAINST|VS|CONTRA)\b/.test(item)),
+    (item) =>
+      item.includes("LETHAL") &&
+      (item.includes("(") || item.includes(":") || /\b(AGAINST|VS|CONTRA)\b/.test(item)),
   );
   return {
     sustained: sustainedValue(keys, toggles),

@@ -227,7 +227,7 @@ table.units td.num { text-align: right; }
 .unit-card.warn { border-color: var(--warn); }
 .unit-card.inactive { background: #12141a; border-style: dashed; filter: grayscale(0.35); }
 .unit-card.inactive .card-reason { color: #ffc9c9; font-size: 12px; }
-.unit-card.tapped { transform: rotate(90deg) scale(0.74); }
+.unit-card.tapped { transform: none; }
 .unit-card.tapped .done-seal { display: none; }
 .unit-card.selected { outline: 2px solid #fff; outline-offset: 2px; }
 .unit-card.destroyed { filter: grayscale(1); opacity: 0.55; }
@@ -360,7 +360,7 @@ button.link { min-height: 0; padding: 0 4px; font-size: 12px; text-decoration: u
     box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
   }
   .phase-rail .phase-menu[open] .phase-step { display: block; width: 100%; text-align: left; }
-  .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; }
+  .phase-rail .pending-chip { min-height: 48px; white-space: nowrap; flex: 0 1 auto; max-width: 34%; overflow: hidden; text-overflow: ellipsis; }
   .sheet-confirm { bottom: calc(80px + env(safe-area-inset-bottom, 0px)); }
   .turn-tag { display: none; }
   .phase-step { flex: none; font-size: 12px; padding: 0 8px; }

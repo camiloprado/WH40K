@@ -129,7 +129,7 @@ export function evaluateUnit(input: {
     return { status: "inactive", reasons: ["Destruída"], allowedWeapons: [], destroyed: true };
   }
   if (input.unit.in_reserves) {
-    return reservesEligibility(input);
+    return reservesEligibility({ ...input, activePlayer: input.activePlayer });
   }
   const var_strActive = input.activePlayer ?? "me";
   const var_setReactive = new Set(["overwatch", "heroic_intervention", "rapid_ingress", "reactive_move"]);
@@ -490,11 +490,20 @@ function reservesEligibility(input: {
   unit: UnitSnapshot;
   unitKeywords?: string[];
   game?: GameFacts;
+  activePlayer?: "me" | "opponent";
 }): Eligibility {
   const round = input.game?.round ?? 1;
   const must = Boolean(input.unit.must_ingress);
   const opponentFirst = input.game?.firstPlayer === "opponent";
   const earlyOk = must && opponentFirst;
+  const ownMove = input.phase === "movement" && (input.activePlayer ?? "me") === "me";
+  const rapid =
+    input.phase === "movement" &&
+    input.activePlayer === "opponent" &&
+    (input.unit.overrides ?? []).some((item) => item.key === "rapid_ingress");
+  if (round > 1 && !ownMove && !rapid && !(round <= 1 && earlyOk)) {
+    return { status: "inactive", reasons: ["Em reserva"], allowedWeapons: [], destroyed: false };
+  }
   if (round <= 1 && !earlyOk) {
     return {
       status: "inactive",

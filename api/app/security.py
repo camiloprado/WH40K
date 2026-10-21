@@ -46,8 +46,10 @@ def read_session_raw(request: Request) -> str | None:
     var_strRaw = request.cookies.get(var_strName)
     if var_strRaw:
         return var_strRaw
-    var_strAlt = con_strCookieDev if var_strName == con_strCookieProd else con_strCookieProd
-    return request.cookies.get(var_strAlt)
+    # SEC-N7: em prod não aceita o cookie `session` de dev.
+    if cookie_name() == con_strCookieProd:
+        return None
+    return request.cookies.get(con_strCookieProd)
 
 
 def allow(key: str, limit: int, window: float) -> bool:

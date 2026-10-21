@@ -30,6 +30,8 @@ export type LiveUnit = {
   below_half: boolean;
   destroyed: boolean;
   in_reserves: boolean;
+  reserve_listed: boolean;
+  points: number;
   must_ingress: boolean;
   action_started_moved: Moved | null;
   snap_shooting: boolean;
@@ -74,7 +76,7 @@ export type Projection = {
     turn_player: string;
     target_list_unit_id?: number | null;
   }[];
-  objectives: { objective_label: string; controller: string; round: number }[];
+  objectives: { objective_label: string; controller: string; round: number; turn_player: string }[];
   scores: { player: string; kind: string; label: string; vp: number; round: number }[];
   shadow: {
     round: number;
@@ -131,6 +133,63 @@ export function zoneOf(unit: Pick<LiveUnit, "destroyed" | "in_reserves">): Zone 
   if (unit.destroyed) return "destroyed";
   if (unit.in_reserves) return "reserves";
   return "table";
+}
+
+const con_reUnengaged = /realm of chaos|fire overwatch|heroic intervention|explosive/i;
+
+export type StratagemCheck = {
+  limit: boolean;
+  sameTarget: boolean;
+  shocked: boolean;
+  engaged: boolean;
+  limitLabel: string;
+};
+
+export function stratagemCheck(
+  state: Pick<Projection, "stratagem_uses" | "round" | "phase" | "player" | "live">,
+  item: { name?: string; stratagem_name?: string; use_limit?: string },
+  targetId?: number | null,
+): StratagemCheck {
+  const name = item.stratagem_name || item.name || "Stratagem";
+  const limit = item.use_limit || "per_phase";
+  const sameName = state.stratagem_uses.filter((row) => row.stratagem_name === name && row.player === "me");
+  const phaseHit = sameName.some(
+    (row) => row.round === state.round && row.phase === state.phase && row.turn_player === state.player,
+  );
+  const limitHit =
+    limit === "per_phase"
+      ? phaseHit
+      : limit === "per_battle"
+        ? sameName.length > 0
+        : limit === "per_round"
+          ? sameName.some((row) => row.round === state.round)
+          : limit === "per_turn"
+            ? sameName.some((row) => row.round === state.round && row.turn_player === state.player)
+            : false;
+  const target = targetId != null ? state.live[targetId] : undefined;
+  const sameTarget =
+    targetId != null &&
+    state.stratagem_uses.some(
+      (row) =>
+        row.player === "me" &&
+        row.phase === state.phase &&
+        row.round === state.round &&
+        row.turn_player === state.player &&
+        row.target_list_unit_id === targetId,
+    );
+  const labels: Record<string, string> = {
+    per_battle: "1×/batalha",
+    per_round: "1×/rodada",
+    per_turn: "1×/turno",
+    per_phase: "1×/fase",
+  };
+  return {
+    limit: limitHit,
+    sameTarget,
+    shocked: Boolean(target?.battle_shocked),
+    engaged: Boolean(target?.engaged && con_reUnengaged.test(name)),
+    limitLabel: labels[limit] || "1×/fase",
+  };
 }
 
 export function applyEvents(events: GameEvent[]): Projection {
@@ -225,6 +284,8 @@ function blank(id: number, name: string, round: number, previous?: LiveUnit): Li
     below_half: previous?.below_half ?? false,
     destroyed: previous?.destroyed ?? false,
     in_reserves: previous?.in_reserves ?? false,
+    reserve_listed: previous?.reserve_listed ?? false,
+    points: previous?.points ?? 0,
     must_ingress: previous?.must_ingress ?? false,
     action_started_moved: null,
     snap_shooting: false,
@@ -252,6 +313,8 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     for (const unit of payload.units || []) {
       const live = blank(unit.list_unit_id, unit.name || "", 1);
       live.in_reserves = Boolean(unit.in_reserves);
+      live.reserve_listed = Boolean(unit.in_reserves);
+      live.points = Number(unit.points || 0);
       state.live[unit.list_unit_id] = live;
       if (live.in_reserves) reservePts += Number(unit.points || 0);
       if (!totalPts && unit.points) totalPts += Number(unit.points || 0);
@@ -317,8 +380,8 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       }
     }
     if (state.phase === "end_of_round" && state.round >= 3) {
-      const stuck = Object.values(state.live).some((unit) => unit.in_reserves && !unit.destroyed);
-      if (stuck) state.warnings.push("reserves_destroyed");
+      const stuck = Object.values(state.live).some((unit) => unit.in_reserves && !unit.destroyed && unit.reserve_listed);
+      if (stuck && !state.warnings.includes("reserves_destroyed")) state.warnings.push("reserves_destroyed");
     }
     return;
   }
@@ -444,8 +507,8 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
       );
       if (sameTarget) state.warnings.push("stratagem_same_target");
       const target = state.live[targetId];
-      if (target?.battle_shocked) state.warnings.push("stratagem_target_shocked");
-      if (target?.engaged) state.warnings.push("stratagem_target_engaged");
+      if (target?.battle_shocked && player === "me") state.warnings.push("stratagem_target_shocked");
+      if (target?.engaged && con_reUnengaged.test(String(name))) state.warnings.push("stratagem_target_engaged");
     }
     const spent = Number(payload.cp_spent || 0);
     if (spent && !changeCp(state, player, -spent, Boolean(payload.cp_override))) return;
@@ -470,8 +533,17 @@ function apply(state: Projection & { started: boolean }, event: GameEvent) {
     return;
   }
   if (event.type === "objective_set") {
-    state.objectives = state.objectives.filter((item) => item.objective_label !== payload.objective_label || item.round !== state.round);
-    state.objectives.push({ objective_label: payload.objective_label, controller: payload.controller, round: state.round });
+    const turn = String(payload.player_turn || payload.turn_player || state.player);
+    state.objectives = state.objectives.filter(
+      (item) =>
+        !(item.objective_label === payload.objective_label && item.round === state.round && item.turn_player === turn),
+    );
+    state.objectives.push({
+      objective_label: payload.objective_label,
+      controller: payload.controller,
+      round: state.round,
+      turn_player: turn,
+    });
     return;
   }
   if (event.type === "vp_scored") {

@@ -12,6 +12,7 @@ import {
   PHASES,
   PHASES_V2,
   shadowNow,
+  stratagemCheck,
   zoneOf,
   type Choice,
   type Lane,
@@ -150,6 +151,8 @@ const BLANK: LiveUnit = {
   below_half: false,
   destroyed: false,
   in_reserves: false,
+  reserve_listed: false,
+  points: 0,
   must_ingress: false,
   action_started_moved: null,
   snap_shooting: false,
@@ -287,7 +290,7 @@ export function GameScreen() {
 
   useEffect(() => {
     if (projection.warnings.includes("reserves_destroyed")) {
-      flash("Reserva ainda fora na R3: marque como destruída (reserves_destroyed)");
+      flash("Reserva inicial ainda fora no fim da rodada 3: marque como destruída.");
     }
   }, [projection.warnings, flash]);
 
@@ -997,7 +1000,7 @@ function UnitCard({
           </span>
         )}
       </button>
-      {["shooting", "charge", "fight"].includes(phase) && onTable && (
+      {mine && ["shooting", "charge", "fight"].includes(phase) && onTable && (
         <button
           type="button"
           className="primary card-action"
@@ -1678,24 +1681,29 @@ function Stratagems({
     setPicking({ item, used, short });
   };
   const render = (item: any, markUsed: boolean) => {
-    const used = projection.stratagem_uses.some(
-      (use) =>
-        use.stratagem_name === item.name &&
-        use.phase === projection.phase &&
-        use.round === projection.round &&
-        use.turn_player === projection.player &&
-        use.player === "me",
-    );
+    const check = stratagemCheck(projection, item, null);
+    const used = check.limit;
     const cost = item.cp_cost || 0;
     return (
       <button
         key={item.id}
         className={`stratagem ${used ? "used" : ""} ${cost > cp ? "short" : ""}`}
-        onClick={() => openPick(item, used, cost > cp)}
+        aria-disabled={used || undefined}
+        style={used ? { borderStyle: "dashed" } : undefined}
+        onClick={async () => {
+          if (used) {
+            const ok = await askConfirm(
+              `${item.name} é ${check.limitLabel} e já foi usado. Registrar mesmo assim?`,
+              { confirmLabel: "Registrar assim mesmo" },
+            );
+            if (!ok) return;
+          }
+          openPick(item, used, cost > cp);
+        }}
       >
         <span>
           {item.name}
-          {markUsed && used ? " · Usado nesta fase" : ""}
+          {used ? ` ⊘ ${check.limitLabel} · já usado` : markUsed ? "" : ""}
         </span>
         <span className="mono">{cost} CP</span>
       </button>

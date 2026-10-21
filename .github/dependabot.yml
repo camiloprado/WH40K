@@ -16,6 +16,9 @@ updates:
     directory: /api
     schedule:
       interval: monthly
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: docker
     directory: /deploy
     schedule:
