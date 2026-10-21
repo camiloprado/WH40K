@@ -10,7 +10,7 @@ from app.services.cheatsheet import commit_rows
 from app.services.views import upsert_effect
 
 CORE = [
-    ("command", "No começo do turno, confira CP e os lembretes da facção. HIPÓTESE até você revisar."),
+    ("command", "No começo do turno, confira CP e os lembretes da facção."),
     (
         "battle_shock",
         "Teste quem está em battle-shock ou na metade da força ou abaixo. Só sai do battle-shock quem já estava nele e passou. Falhou: fica em battle-shock.",
