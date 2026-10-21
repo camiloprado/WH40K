@@ -171,13 +171,72 @@ def condition_unevaluable(node: object, facts: dict) -> bool:
     return False
 
 
-def guide_match(node: object, facts: dict) -> tuple[bool, bool]:
-    """Guia/lembrete: (incluir, condicional). Motor allow/deny continua em matches() (M6)."""
+def _fact_known(facts: dict, key: str) -> bool:
+    if key.startswith("state."):
+        field = key.split(".", 1)[1]
+        state = facts.get("state")
+        if isinstance(state, dict) and field in state:
+            return True
+        return key in facts
+    if key == "unit_keyword":
+        return "unit_keywords" in facts or key in facts
+    if key == "weapon_keyword":
+        return "weapon_keywords" in facts or key in facts
+    if key == "game.round":
+        return "round" in facts or key in facts
+    if key == "game.shadow_of_chaos":
+        return "shadow_areas" in facts or key in facts
+    return key in facts
+
+
+def kleene(node: object, facts: dict) -> bool | None:
+    """Três valores para o guia (R1b). Allow/deny continua em matches() (M6)."""
     if node in (None, {}):
+        return True
+    if not isinstance(node, dict):
+        return False
+    if "all" in node:
+        unknown = False
+        for child in node["all"]:
+            value = kleene(child, facts)
+            if value is False:
+                return False
+            if value is None:
+                unknown = True
+        return None if unknown else True
+    if "any" in node:
+        unknown = False
+        for child in node["any"]:
+            value = kleene(child, facts)
+            if value is True:
+                return True
+            if value is None:
+                unknown = True
+        return None if unknown else False
+    if "not" in node:
+        value = kleene(node["not"], facts)
+        if value is None:
+            return None
+        return not value
+    key, _expected = next(iter(node.items()))
+    if not _fact_known(facts, key):
+        return None
+    if key == "game.shadow_of_chaos" and not facts.get("shadow_areas_complete"):
+        areas = list(facts.get("shadow_areas") or [])
+        expected = next(iter(node.values()))
+        if expected is True or expected is False:
+            return None
+        if expected in ("nml", "opp_dz") and str(expected) not in areas:
+            return None
+    return True if matches(node, facts) else False
+
+
+def guide_match(node: object, facts: dict) -> tuple[bool, bool]:
+    """Guia/lembrete: True sem selo, None condicional, False escondido (R1b)."""
+    value = kleene(node, facts)
+    if value is True:
         return True, False
-    if matches(node, facts):
-        return True, False
-    if condition_unevaluable(node, facts):
+    if value is None:
         return True, True
     return False, False
 

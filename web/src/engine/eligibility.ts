@@ -474,14 +474,84 @@ export function conditionLabel(node: Record<string, unknown> | null | undefined)
   return `${key}=${expected}`;
 }
 
-/** Guia/lembrete: fato não avaliável não filtra (R1). Elegibilidade allow/deny usa matchCondition (M6). */
+type Kleene = true | false | null;
+
+function factKnown(facts: Record<string, unknown>, key: string): boolean {
+  if (key.startsWith("state.")) {
+    const field = key.slice(6);
+    const state = facts.state;
+    if (state && typeof state === "object" && field in (state as object)) return true;
+    return key in facts;
+  }
+  if (key === "unit_keyword") return "unit_keywords" in facts || key in facts;
+  if (key === "weapon_keyword") return "weapon_keywords" in facts || key in facts;
+  if (key === "game.round") return "round" in facts || key in facts;
+  if (key === "game.shadow_of_chaos") return "shadow_areas" in facts || key in facts;
+  return key in facts;
+}
+
+/** Três valores para o guia (R1b). Allow/deny continua em matches(), fail-closed. */
+export function kleene(
+  node: Record<string, unknown> | null | undefined,
+  facts: Record<string, unknown>,
+): Kleene {
+  if (!node || Object.keys(node).length === 0) return true;
+  if (Array.isArray(node.all)) {
+    let unknown = false;
+    for (const child of node.all) {
+      const value = kleene(child as Record<string, unknown>, facts);
+      if (value === false) return false;
+      if (value === null) unknown = true;
+    }
+    return unknown ? null : true;
+  }
+  if (Array.isArray(node.any)) {
+    let unknown = false;
+    for (const child of node.any) {
+      const value = kleene(child as Record<string, unknown>, facts);
+      if (value === true) return true;
+      if (value === null) unknown = true;
+    }
+    return unknown ? null : false;
+  }
+  if (node.not) {
+    const value = kleene(node.not as Record<string, unknown>, facts);
+    if (value === null) return null;
+    return !value;
+  }
+  const [key, expected] = Object.entries(node)[0];
+  if (!factKnown(facts, key)) return null;
+  if (key === "game.shadow_of_chaos" && facts.shadow_areas_complete !== true) {
+    const areas = (facts.shadow_areas as string[]) || [];
+    if (expected === true || expected === false) return null;
+    if ((expected === "nml" || expected === "opp_dz") && !areas.includes(String(expected))) return null;
+  }
+  return leafTrue(key, expected, facts) ? true : false;
+}
+
+function leafTrue(key: string, expected: unknown, facts: Record<string, unknown>): boolean {
+  if (key.startsWith("state.")) {
+    const state = facts.state as Record<string, unknown> | undefined;
+    return Boolean(state && state[key.slice(6)] === expected);
+  }
+  if (key === "unit_keyword") return ((facts.unit_keywords as string[]) || []).includes(String(expected));
+  if (key === "weapon_keyword") return ((facts.weapon_keywords as string[]) || []).includes(String(expected));
+  if (key === "phase") return expected === "any" || facts.phase === expected;
+  if (key === "turn_owner") return expected === "both" || facts.turn_owner === expected;
+  if (key === "is_leading") return Boolean(facts.is_leading) === Boolean(expected);
+  if (key === "game.round") return facts.round === expected;
+  if (key === "game.shadow_of_chaos") return matchCondition({ [key]: expected }, facts);
+  return false;
+}
+
+/** Guia/lembrete: True sem selo, None condicional, False escondido (R1b). */
 export function guideMatch(
   node: Record<string, unknown> | null | undefined,
   facts: { shadow_areas?: string[]; shadow_areas_complete?: boolean; turn_owner?: string; phase?: string; [key: string]: unknown },
 ): { include: boolean; conditional: boolean } {
-  if (!node || Object.keys(node).length === 0) return { include: true, conditional: false };
-  if (matchCondition(node, facts)) return { include: true, conditional: false };
-  if (conditionUnevaluable(node, facts)) return { include: true, conditional: true };
+  const value = kleene(node, facts);
+  if (value === true) return { include: true, conditional: false };
+  if (value === null) return { include: true, conditional: true };
   return { include: false, conditional: false };
 }
 

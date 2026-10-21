@@ -134,3 +134,41 @@ def test_accepts_configured_host():
             os.environ["EXTRA_HOSTS"] = prev
         os.environ["APP_ENV"] = "test"
         get_settings.cache_clear()
+
+
+def test_session_absolute_expiry():
+    import hashlib
+    from datetime import datetime, timedelta, timezone
+
+    from fastapi import HTTPException
+    from starlette.requests import Request
+
+    from app.db import session_factory
+    from app.models import SessionRow
+    from app.security import require_session
+
+    raw = "absolute-expiry-token"
+    db = session_factory()()
+    row = SessionRow(
+        token_hash=hashlib.sha256(raw.encode()).hexdigest(),
+        created_at=datetime.now(timezone.utc) - timedelta(days=31),
+        last_seen_at=datetime.now(timezone.utc),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=1),
+    )
+    db.add(row)
+    db.commit()
+    scope = {"type": "http", "headers": [(b"cookie", f"session={raw}".encode())]}
+    request = Request(scope)
+    try:
+        require_session(request, db)
+        raise AssertionError("sessão de 31 dias deveria expirar")
+    except HTTPException as exc:
+        assert exc.status_code == 401
+    finally:
+        db.close()
+
+
+def test_logout_all():
+    client = _client("test")
+    response = client.delete("/api/v1/session/all", headers={"X-App": "wh40k", "content-type": "application/json"})
+    assert response.status_code == 401

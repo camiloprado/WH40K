@@ -1,0 +1,62 @@
+[
+  {
+    "name": "shadow_false_incomplete_is_conditional",
+    "node": {"game.shadow_of_chaos": false},
+    "facts": {"shadow_areas": ["own_dz"], "shadow_areas_complete": false},
+    "expected": {"include": true, "conditional": true}
+  },
+  {
+    "name": "not_unknown_stays_unknown",
+    "node": {"not": {"is_leading": true}},
+    "facts": {},
+    "expected": {"include": true, "conditional": true}
+  },
+  {
+    "name": "all_with_false_child_is_excluded",
+    "node": {"all": [{"phase": "shooting"}, {"turn_owner": "own"}]},
+    "facts": {"phase": "command", "turn_owner": "own"},
+    "expected": {"include": false, "conditional": false}
+  },
+  {
+    "name": "below_half_true",
+    "node": {"state.below_half": true},
+    "facts": {"state": {"below_half": true}},
+    "expected": {"include": true, "conditional": false}
+  },
+  {
+    "name": "phase_any",
+    "node": {"phase": "any"},
+    "facts": {"phase": "shooting"},
+    "expected": {"include": true, "conditional": false}
+  },
+  {
+    "name": "turn_owner_both",
+    "node": {"turn_owner": "both"},
+    "facts": {"turn_owner": "own"},
+    "expected": {"include": true, "conditional": false}
+  },
+  {
+    "name": "missing_round_is_conditional",
+    "node": {"game.round": 2},
+    "facts": {},
+    "expected": {"include": true, "conditional": true}
+  },
+  {
+    "name": "unit_keyword_present",
+    "node": {"unit_keyword": "INFANTRY"},
+    "facts": {"unit_keywords": ["INFANTRY"]},
+    "expected": {"include": true, "conditional": false}
+  },
+  {
+    "name": "weapon_keyword_missing",
+    "node": {"weapon_keyword": "PISTOL"},
+    "facts": {},
+    "expected": {"include": true, "conditional": true}
+  },
+  {
+    "name": "is_leading_false",
+    "node": {"is_leading": true},
+    "facts": {"is_leading": false},
+    "expected": {"include": false, "conditional": false}
+  }
+]

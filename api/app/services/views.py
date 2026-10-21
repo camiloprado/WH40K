@@ -840,7 +840,7 @@ def clean_choice(payload: dict) -> tuple[list[str], int | None, str]:
     else:
         count = None
     scope = payload.get("choice_scope") or "turn"
-    if scope not in {"turn", "round", "battle"}:
+    if scope not in {"turn", "round", "battle", "until_own_command"}:
         err(422, "validation_error", "Escopo de escolha inválido")
     return options, count, scope
 

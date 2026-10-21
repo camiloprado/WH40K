@@ -644,6 +644,7 @@ export function GameScreen() {
                         ? `Sync ${pending}`
                         : "Sincronizado"}
               </span>
+              {bundle && <span className="chip">✓ Pronto offline</span>}
               {!wake && (
                 <button
                   type="button"
@@ -1071,7 +1072,7 @@ function Inspector({
   const { unit, live, result } = card;
   const primaryLabel = phase === "shooting" ? (live.shot ? "Desmarcar tiro" : "Atirou") : phase === "charge" ? (live.charged ? "Desmarcar carga" : "Carregou") : phase === "fight" ? (live.fought ? "Desmarcar luta" : "Lutou") : null;
   return (
-    <section className="panel inspector" aria-label="Unidade selecionada">
+    <section className="panel inspector inspector-sheet" aria-label="Unidade selecionada">
       <div className="panel-head">
         <h2>{unit.datasheet_name}</h2>
         <button className="ghost close" onClick={onClose} aria-label="Fechar">

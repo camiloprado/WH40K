@@ -197,13 +197,17 @@ def backup(database: Session = Depends(db_session), _s=Depends(authed)):
     return export_backup(database)
 
 
+class RestoreIn(BaseModel):
+    confirm: str
+    data: dict
+
+
 @router.post("/restore")
-def restore(body: dict, database: Session = Depends(db_session), _s=Depends(authed)):
-    _confirm(body, "RESTAURAR")
-    if "data" not in body:
-        err(400, "invalid_input", "Backup ausente")
+def restore(body: RestoreIn, database: Session = Depends(db_session), _s=Depends(authed)):
+    if body.confirm != "RESTAURAR":
+        err(400, "confirm_required", "Confirme com RESTAURAR")
     try:
-        restore_backup(database, body["data"], _backup_dir())
+        restore_backup(database, body.data, _backup_dir())
     except ValueError as exc:
         err(422, "invalid_input", str(exc))
     return {"ok": True}
